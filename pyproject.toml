@@ -1,0 +1,105 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "agentworld"
+version = "0.1.0"
+description = "A multi-agent simulation framework for product testing and data generation"
+readme = "README.md"
+license = "MIT"
+requires-python = ">=3.11"
+authors = [
+    { name = "AgentWorld Team" }
+]
+keywords = ["agents", "simulation", "llm", "multi-agent", "personas"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+]
+
+dependencies = [
+    "litellm>=1.0.0",
+    "sqlalchemy>=2.0.0",
+    "typer>=0.9.0",
+    "rich>=13.0.0",
+    "pyyaml>=6.0",
+    "jinja2>=3.0.0",
+    "pydantic>=2.0.0",
+    "aiosqlite>=0.19.0",
+    "numpy>=1.24.0",
+    "tiktoken>=0.5.0",
+    "networkx>=3.0.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0.0",
+    "pytest-asyncio>=0.21.0",
+    "pytest-cov>=4.0.0",
+    "ruff>=0.1.0",
+    "mypy>=1.0.0",
+]
+
+[project.scripts]
+agentworld = "agentworld.cli.app:main"
+
+[project.urls]
+Homepage = "https://github.com/agentworld/agentworld"
+Documentation = "https://github.com/agentworld/agentworld#readme"
+Repository = "https://github.com/agentworld/agentworld"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/agentworld"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+python_functions = ["test_*"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "N", "W", "UP"]
+ignore = ["E501"]
+
+[tool.mypy]
+python_version = "3.11"
+warn_return_any = true
+warn_unused_ignores = true
+disallow_untyped_defs = true
+
+# Plugin entry points per ADR-014
+[project.entry-points."agentworld.tools"]
+calculator = "agentworld.plugins.builtin:CalculatorTool"
+current_time = "agentworld.plugins.builtin:CurrentTimeTool"
+random_number = "agentworld.plugins.builtin:RandomNumberTool"
+
+[project.entry-points."agentworld.output_formats"]
+json = "agentworld.plugins.builtin:JSONOutputFormat"
+jsonl = "agentworld.plugins.builtin:JSONLOutputFormat"
+csv = "agentworld.plugins.builtin:CSVOutputFormat"
+
+[project.entry-points."agentworld.topologies"]
+# Built-in topologies are registered programmatically; add external plugins here
+
+[project.entry-points."agentworld.scenarios"]
+# Scenario plugins
+
+[project.entry-points."agentworld.validators"]
+# Validator plugins
+
+[project.entry-points."agentworld.extractors"]
+# Extractor plugins
+
+[project.entry-points."agentworld.llm_providers"]
+# LLM provider plugins

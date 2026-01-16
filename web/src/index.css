@@ -1,0 +1,132 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --font-sans: 'Inter', system-ui, sans-serif;
+    --font-mono: 'JetBrains Mono', Menlo, monospace;
+  }
+
+  html {
+    @apply bg-background text-foreground antialiased;
+  }
+
+  body {
+    @apply min-h-screen;
+  }
+
+  * {
+    @apply border-border;
+  }
+
+  /* Custom scrollbar for dark theme */
+  ::-webkit-scrollbar {
+    @apply w-2 h-2;
+  }
+
+  ::-webkit-scrollbar-track {
+    @apply bg-background-secondary rounded-full;
+  }
+
+  ::-webkit-scrollbar-thumb {
+    @apply bg-border hover:bg-border-hover rounded-full;
+  }
+
+  /* Focus styles */
+  *:focus-visible {
+    @apply outline-none ring-2 ring-primary ring-offset-2 ring-offset-background;
+  }
+}
+
+@layer components {
+  /* Card component base */
+  .card {
+    @apply bg-background-secondary border border-border rounded-lg;
+  }
+
+  /* Button variants */
+  .btn {
+    @apply inline-flex items-center justify-center rounded-md text-sm font-medium
+           transition-colors focus-visible:outline-none focus-visible:ring-2
+           focus-visible:ring-primary focus-visible:ring-offset-2
+           disabled:pointer-events-none disabled:opacity-50;
+  }
+
+  .btn-primary {
+    @apply btn bg-primary text-primary-foreground hover:bg-primary-hover;
+  }
+
+  .btn-secondary {
+    @apply btn bg-secondary text-secondary-foreground hover:bg-secondary-hover;
+  }
+
+  .btn-ghost {
+    @apply btn hover:bg-secondary hover:text-secondary-foreground;
+  }
+
+  .btn-danger {
+    @apply btn bg-error text-error-foreground hover:bg-error-hover;
+  }
+
+  /* Input base */
+  .input {
+    @apply flex h-10 w-full rounded-md border border-border bg-background-secondary
+           px-3 py-2 text-sm placeholder:text-foreground-muted
+           focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary
+           disabled:cursor-not-allowed disabled:opacity-50;
+  }
+
+  /* Badge component */
+  .badge {
+    @apply inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium;
+  }
+
+  .badge-default {
+    @apply badge bg-secondary text-secondary-foreground;
+  }
+
+  .badge-primary {
+    @apply badge bg-primary/10 text-primary;
+  }
+
+  .badge-success {
+    @apply badge bg-success-background text-success-foreground;
+  }
+
+  .badge-warning {
+    @apply badge bg-warning-background text-warning-foreground;
+  }
+
+  .badge-error {
+    @apply badge bg-error-background text-error-foreground;
+  }
+}
+
+@layer utilities {
+  /* Animation utilities */
+  .animate-in {
+    animation: animate-in 0.2s ease-out;
+  }
+
+  @keyframes animate-in {
+    from {
+      opacity: 0;
+      transform: translateY(-4px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+
+  /* Gradient text */
+  .gradient-text {
+    @apply bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent;
+  }
+
+  /* Glass effect */
+  .glass {
+    @apply bg-background-secondary/80 backdrop-blur-md;
+  }
+}
