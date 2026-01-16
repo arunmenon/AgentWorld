@@ -1,6 +1,9 @@
-import { useRef, useEffect, useMemo, useCallback, memo } from 'react'
+import { useRef, useEffect, useMemo, useCallback, memo, useState } from 'react'
 import ForceGraph2D, { ForceGraphMethods, NodeObject, LinkObject } from 'react-force-graph-2d'
 import { cn } from '@/lib/utils'
+
+// Threshold for hiding labels (show only on hover when exceeded)
+const LABEL_THRESHOLD = 20
 
 export interface Agent {
   id: string
@@ -36,6 +39,7 @@ interface GraphNode extends NodeObject {
   messageCount: number
   isThinking?: boolean
   isSelected?: boolean
+  isHovered?: boolean
 }
 
 interface GraphLink extends LinkObject {
@@ -79,6 +83,10 @@ export const TopologyGraph = memo(function TopologyGraph({
 }: TopologyGraphProps) {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const graphRef = useRef<ForceGraphMethods<any, any>>()
+  const [hoveredNodeId, setHoveredNodeId] = useState<string | null>(null)
+
+  // Determine if we should show labels for all nodes or only on hover
+  const showAllLabels = agents.length <= LABEL_THRESHOLD
 
   // Calculate message counts per agent
   const agentMessageCounts = useMemo(() => {
@@ -100,6 +108,7 @@ export const TopologyGraph = memo(function TopologyGraph({
       color: getAgentColor(agent.name),
       messageCount: agentMessageCounts.get(agent.id) || 0,
       isSelected: agent.id === selectedAgentId,
+      isHovered: agent.id === hoveredNodeId,
     }))
 
     // Build edges from message flow
@@ -131,7 +140,7 @@ export const TopologyGraph = memo(function TopologyGraph({
     const links = Array.from(linkMap.values())
 
     return { nodes, links }
-  }, [agents, messages, selectedAgentId, agentMessageCounts])
+  }, [agents, messages, selectedAgentId, hoveredNodeId, agentMessageCounts])
 
   // Node rendering
   const nodeCanvasObject = useCallback(
@@ -143,9 +152,14 @@ export const TopologyGraph = memo(function TopologyGraph({
 
       const label = node.name
       const fontSize = 12 / globalScale
-      // Make selected nodes slightly larger
-      const baseRadius = Math.max(8, Math.min(20, 8 + node.messageCount / 2))
-      const nodeRadius = node.isSelected ? baseRadius * 1.2 : baseRadius
+      // Make nodes larger when labels are hidden (for better visibility)
+      const sizeMultiplier = showAllLabels ? 1 : 1.3
+      // Make selected/hovered nodes slightly larger
+      const baseRadius = Math.max(8, Math.min(20, 8 + node.messageCount / 2)) * sizeMultiplier
+      const nodeRadius = (node.isSelected || node.isHovered) ? baseRadius * 1.2 : baseRadius
+
+      // Determine if we should show the label for this node
+      const shouldShowLabel = showAllLabels || node.isSelected || node.isHovered
 
       // Draw selection ring/halo first (behind the node)
       if (node.isSelected) {
@@ -166,6 +180,17 @@ export const TopologyGraph = memo(function TopologyGraph({
         ctx.stroke()
       }
 
+      // Draw hover ring (subtle)
+      if (node.isHovered && !node.isSelected) {
+        ctx.beginPath()
+        ctx.arc(node.x, node.y, nodeRadius + 4 / globalScale, 0, 2 * Math.PI)
+        ctx.strokeStyle = node.color
+        ctx.lineWidth = 2 / globalScale
+        ctx.globalAlpha = 0.6
+        ctx.stroke()
+        ctx.globalAlpha = 1
+      }
+
       // Draw node circle
       ctx.beginPath()
       ctx.arc(node.x, node.y, nodeRadius, 0, 2 * Math.PI)
@@ -179,8 +204,8 @@ export const TopologyGraph = memo(function TopologyGraph({
         node.y,
         nodeRadius
       )
-      // Brighter colors for selected node
-      if (node.isSelected) {
+      // Brighter colors for selected/hovered node
+      if (node.isSelected || node.isHovered) {
         gradient.addColorStop(0, '#ffffff')
         gradient.addColorStop(0.3, node.color)
         gradient.addColorStop(1, node.color + 'cc')
@@ -198,29 +223,31 @@ export const TopologyGraph = memo(function TopologyGraph({
         ctx.stroke()
       }
 
-      // Draw label
-      ctx.font = `${fontSize}px Inter, sans-serif`
-      ctx.textAlign = 'center'
-      ctx.textBaseline = 'middle'
-      ctx.fillStyle = '#fff'
+      // Draw label only when appropriate
+      if (shouldShowLabel) {
+        ctx.font = `${fontSize}px Inter, sans-serif`
+        ctx.textAlign = 'center'
+        ctx.textBaseline = 'middle'
+        ctx.fillStyle = '#fff'
 
-      // Draw label background
-      const textWidth = ctx.measureText(label).width
-      const bgPadding = 2 / globalScale
-      const bgHeight = fontSize + bgPadding * 2
-      const bgY = node.y + nodeRadius + 4 / globalScale
+        // Draw label background
+        const textWidth = ctx.measureText(label).width
+        const bgPadding = 2 / globalScale
+        const bgHeight = fontSize + bgPadding * 2
+        const bgY = node.y + nodeRadius + 4 / globalScale
 
-      ctx.fillStyle = 'rgba(0, 0, 0, 0.7)'
-      ctx.fillRect(
-        node.x - textWidth / 2 - bgPadding,
-        bgY - bgHeight / 2,
-        textWidth + bgPadding * 2,
-        bgHeight
-      )
+        ctx.fillStyle = 'rgba(0, 0, 0, 0.7)'
+        ctx.fillRect(
+          node.x - textWidth / 2 - bgPadding,
+          bgY - bgHeight / 2,
+          textWidth + bgPadding * 2,
+          bgHeight
+        )
 
-      // Draw label text
-      ctx.fillStyle = '#fff'
-      ctx.fillText(label, node.x, bgY)
+        // Draw label text
+        ctx.fillStyle = '#fff'
+        ctx.fillText(label, node.x, bgY)
+      }
 
       // Draw message count badge if > 0
       if (node.messageCount > 0) {
@@ -238,7 +265,7 @@ export const TopologyGraph = memo(function TopologyGraph({
         ctx.fillText(String(node.messageCount), badgeX, badgeY)
       }
     },
-    []
+    [showAllLabels]
   )
 
   // Link rendering
@@ -280,6 +307,14 @@ export const TopologyGraph = memo(function TopologyGraph({
     [onAgentSelect]
   )
 
+  // Handle node hover
+  const handleNodeHover = useCallback(
+    (node: GraphNode | null) => {
+      setHoveredNodeId(node ? node.id : null)
+    },
+    []
+  )
+
   // Center graph on mount
   useEffect(() => {
     if (graphRef.current) {
@@ -316,6 +351,7 @@ export const TopologyGraph = memo(function TopologyGraph({
         nodeCanvasObject={nodeCanvasObject}
         linkCanvasObject={linkCanvasObject}
         onNodeClick={handleNodeClick}
+        onNodeHover={handleNodeHover}
         nodeRelSize={8}
         linkDirectionalParticles={2}
         linkDirectionalParticleWidth={2}

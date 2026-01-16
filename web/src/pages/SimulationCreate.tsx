@@ -1,7 +1,20 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { Plus, Trash2, ChevronLeft, Users, AlertCircle } from 'lucide-react'
+import {
+  Plus,
+  Trash2,
+  ChevronLeft,
+  Users,
+  AlertCircle,
+  Sparkles,
+  Building2,
+  Wine,
+  PenTool,
+  Brain,
+  Rocket,
+  BookOpen,
+} from 'lucide-react'
 import {
   Card,
   CardHeader,
@@ -12,11 +25,22 @@ import {
   Input,
   Textarea,
   Label,
+  Badge,
   toast,
   confirm,
 } from '@/components/ui'
 import { cn } from '@/lib/utils'
 import { api } from '@/lib/api'
+import { templates, type SimulationTemplate } from '@/lib/templates'
+
+const iconMap: Record<string, React.ElementType> = {
+  'building-2': Building2,
+  'wine': Wine,
+  'pen-tool': PenTool,
+  'brain': Brain,
+  'rocket': Rocket,
+  'book-open': BookOpen,
+}
 
 interface AgentConfig {
   name: string
@@ -98,6 +122,40 @@ export default function SimulationCreate() {
   const [errors, setErrors] = useState<ValidationErrors>({})
   const [touched, setTouched] = useState<Record<string, boolean>>({})
   const [showPersonaPicker, setShowPersonaPicker] = useState(false)
+  const [selectedTemplate, setSelectedTemplate] = useState<string | null>(null)
+  const [showTemplates, setShowTemplates] = useState(true)
+
+  // Apply a template to the form
+  const applyTemplate = (template: SimulationTemplate) => {
+    setName(template.name)
+    setSteps(template.steps)
+    setInitialPrompt(template.initialPrompt)
+    setAgents(template.agents.map(a => ({
+      name: a.name,
+      background: a.background,
+      traits: a.traits,
+    })))
+    setSelectedTemplate(template.id)
+    setShowTemplates(false)
+    setErrors({})
+    setTouched({})
+    toast.success('Template applied', `"${template.name}" configuration loaded.`)
+  }
+
+  // Clear template and reset to blank
+  const clearTemplate = () => {
+    setName('')
+    setSteps(10)
+    setInitialPrompt('')
+    setAgents([
+      { ...defaultAgent, name: 'Alice' },
+      { ...defaultAgent, name: 'Bob' },
+    ])
+    setSelectedTemplate(null)
+    setShowTemplates(true)
+    setErrors({})
+    setTouched({})
+  }
 
   // Fetch personas for the picker
   const { data: personasData } = useQuery({
@@ -229,6 +287,98 @@ export default function SimulationCreate() {
         <ChevronLeft className="h-4 w-4 mr-2" />
         Back to Simulations
       </Button>
+
+      {/* Template Picker */}
+      {showTemplates && (
+        <Card className="mb-6">
+          <CardHeader>
+            <div className="flex items-center gap-2">
+              <Sparkles className="h-5 w-5 text-primary" />
+              <CardTitle>Start from a Template</CardTitle>
+            </div>
+            <CardDescription>
+              Choose a pre-built scenario or start from scratch
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+              {templates.map((template) => {
+                const Icon = iconMap[template.icon] || Building2
+                return (
+                  <button
+                    key={template.id}
+                    type="button"
+                    onClick={() => applyTemplate(template)}
+                    className={cn(
+                      'p-4 rounded-lg border border-border text-left transition-all',
+                      'hover:border-primary/50 hover:bg-primary/5',
+                      'focus:outline-none focus:ring-2 focus:ring-primary/50'
+                    )}
+                  >
+                    <div className="flex items-start gap-3">
+                      <div className="h-10 w-10 rounded-lg bg-primary/10 flex items-center justify-center flex-shrink-0">
+                        <Icon className="h-5 w-5 text-primary" />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 mb-1">
+                          <h4 className="font-medium text-sm">{template.name}</h4>
+                          <Badge variant="outline" className="text-xs">
+                            {template.agents.length} agents
+                          </Badge>
+                        </div>
+                        <p className="text-xs text-foreground-secondary line-clamp-2">
+                          {template.description}
+                        </p>
+                      </div>
+                    </div>
+                  </button>
+                )
+              })}
+            </div>
+            <div className="mt-4 pt-4 border-t border-border">
+              <button
+                type="button"
+                onClick={() => setShowTemplates(false)}
+                className="text-sm text-foreground-secondary hover:text-foreground transition-colors"
+              >
+                Or start from scratch
+              </button>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Selected Template Banner */}
+      {selectedTemplate && !showTemplates && (
+        <div className="flex items-center justify-between p-3 rounded-lg bg-primary/10 border border-primary/20 mb-6">
+          <div className="flex items-center gap-2">
+            <Sparkles className="h-4 w-4 text-primary" />
+            <span className="text-sm">
+              Using template: <strong>{templates.find(t => t.id === selectedTemplate)?.name}</strong>
+            </span>
+          </div>
+          <div className="flex gap-2">
+            <Button variant="ghost" size="sm" onClick={() => setShowTemplates(true)}>
+              Change Template
+            </Button>
+            <Button variant="ghost" size="sm" onClick={clearTemplate}>
+              Start Fresh
+            </Button>
+          </div>
+        </div>
+      )}
+
+      {/* Show templates button when hidden */}
+      {!showTemplates && !selectedTemplate && (
+        <Button
+          variant="outline"
+          className="mb-6"
+          onClick={() => setShowTemplates(true)}
+        >
+          <Sparkles className="h-4 w-4 mr-2" />
+          Browse Templates
+        </Button>
+      )}
 
       <form onSubmit={handleSubmit} className="space-y-6">
         {/* Basic Info */}

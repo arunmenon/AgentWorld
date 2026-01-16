@@ -86,6 +86,13 @@ export default function SimulationDetail() {
     enabled: !!id,
   })
 
+  // Fetch memories for selected agent
+  const { data: memoriesData, refetch: refetchMemories } = useQuery({
+    queryKey: ['simulation', id, 'agent', selectedAgentId, 'memories'],
+    queryFn: () => api.getAgentMemories(id!, selectedAgentId!),
+    enabled: !!id && !!selectedAgentId,
+  })
+
   // Connect to WebSocket when component mounts
   useEffect(() => {
     if (id) {
@@ -98,12 +105,15 @@ export default function SimulationDetail() {
     }
   }, [id, connect, disconnect, clearLiveData])
 
-  // Refetch messages when live messages arrive
+  // Refetch messages and memories when live messages arrive
   useEffect(() => {
     if (liveMessages.length > 0) {
       refetchMessages()
+      if (selectedAgentId) {
+        refetchMemories()
+      }
     }
-  }, [liveMessages.length, refetchMessages])
+  }, [liveMessages.length, refetchMessages, refetchMemories, selectedAgentId])
 
   // Combine API messages with live messages
   const messages: Message[] = useMemo(() => {
@@ -111,8 +121,18 @@ export default function SimulationDetail() {
     return apiMessages
   }, [messagesData])
 
-  // Empty memories array for now (can be fetched from API later)
-  const memories: Memory[] = useMemo(() => [], [])
+  // Transform API memories to component format
+  const memories: Memory[] = useMemo(() => {
+    if (!memoriesData?.memories) return []
+    return memoriesData.memories.map(m => ({
+      id: m.id,
+      agent_id: m.agent_id,
+      type: m.memory_type as Memory['type'],
+      content: m.content,
+      importance: m.importance / 10, // API returns 0-10, component expects 0-1
+      created_at: m.created_at,
+    }))
+  }, [memoriesData])
 
   // Get selected agent
   const selectedAgent = useMemo(() => {
