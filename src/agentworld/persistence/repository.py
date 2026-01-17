@@ -1,6 +1,6 @@
 """Repository pattern for data access."""
 
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Any
 
 from sqlalchemy.orm import Session
@@ -139,7 +139,7 @@ class Repository:
             elif hasattr(model, key):
                 setattr(model, key, value)
 
-        model.updated_at = datetime.utcnow()
+        model.updated_at = datetime.now(UTC)
         self.session.commit()
         return True
 
@@ -707,7 +707,7 @@ class Repository:
             return None
 
         # Check expiration
-        if model.expires_at is not None and model.expires_at < datetime.utcnow():
+        if model.expires_at is not None and model.expires_at < datetime.now(UTC):
             self.session.delete(model)
             self.session.commit()
             return None
@@ -738,7 +738,7 @@ class Repository:
         """
         count = (
             self.session.query(LLMCacheModel)
-            .filter(LLMCacheModel.expires_at < datetime.utcnow())
+            .filter(LLMCacheModel.expires_at < datetime.now(UTC))
             .delete()
         )
         self.session.commit()
@@ -942,7 +942,7 @@ class Repository:
             elif hasattr(model, key):
                 setattr(model, key, value)
 
-        model.updated_at = datetime.utcnow()
+        model.updated_at = datetime.now(UTC)
         self.session.commit()
         return True
 

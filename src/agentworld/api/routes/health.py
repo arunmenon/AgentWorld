@@ -1,6 +1,6 @@
 """Health check endpoints."""
 
-from datetime import datetime
+from datetime import UTC, datetime
 
 from fastapi import APIRouter
 
@@ -16,7 +16,7 @@ async def health_check():
     return {
         "status": "healthy",
         "version": __version__,
-        "timestamp": datetime.utcnow().isoformat(),
+        "timestamp": datetime.now(UTC).isoformat(),
     }
 
 
@@ -27,5 +27,5 @@ async def api_health_check():
         "status": "healthy",
         "version": __version__,
         "api_version": "v1",
-        "timestamp": datetime.utcnow().isoformat(),
+        "timestamp": datetime.now(UTC).isoformat(),
     }

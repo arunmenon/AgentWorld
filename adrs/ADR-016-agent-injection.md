@@ -1,7 +1,7 @@
 # ADR-016: Agent Injection for External Agent Testing
 
 ## Status
-Proposed
+Accepted
 
 ## Dependencies
 - **[ADR-011](./ADR-011-simulation-runtime.md)**: Simulation Runtime & Scheduling (turn semantics, determinism)

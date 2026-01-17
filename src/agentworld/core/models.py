@@ -1,7 +1,7 @@
 """Core data models for AgentWorld."""
 
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import UTC, datetime
 from enum import Enum
 from typing import Any
 import uuid
@@ -53,7 +53,7 @@ class Message:
             sender_id=data["sender_id"],
             receiver_id=data.get("receiver_id"),
             content=data["content"],
-            timestamp=timestamp or datetime.utcnow(),
+            timestamp=timestamp or datetime.now(UTC),
             step=data.get("step", 0),
             simulation_id=data.get("simulation_id"),
         )

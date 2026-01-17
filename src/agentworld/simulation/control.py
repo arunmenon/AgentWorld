@@ -8,7 +8,7 @@ import asyncio
 from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any, Callable, Awaitable, TYPE_CHECKING
-from datetime import datetime
+from datetime import UTC, datetime
 
 if TYPE_CHECKING:
     from agentworld.simulation.ordering import OrderingStrategy
@@ -340,24 +340,24 @@ async def with_timeout(
     Returns:
         Tuple of (result or None, TimeoutResult)
     """
-    start = datetime.utcnow()
+    start = datetime.now(UTC)
     try:
         result = await asyncio.wait_for(coro, timeout=timeout_seconds)
-        duration = (datetime.utcnow() - start).total_seconds()
+        duration = (datetime.now(UTC) - start).total_seconds()
         return result, TimeoutResult(
             completed=True,
             timed_out=False,
             duration_seconds=duration,
         )
     except asyncio.TimeoutError:
-        duration = (datetime.utcnow() - start).total_seconds()
+        duration = (datetime.now(UTC) - start).total_seconds()
         return None, TimeoutResult(
             completed=False,
             timed_out=True,
             duration_seconds=duration,
         )
     except Exception as e:
-        duration = (datetime.utcnow() - start).total_seconds()
+        duration = (datetime.now(UTC) - start).total_seconds()
         return None, TimeoutResult(
             completed=False,
             timed_out=False,
@@ -487,10 +487,10 @@ class ThreePhaseExecutor:
         Returns:
             PhaseResult with perception data
         """
-        start = datetime.utcnow()
+        start = datetime.now(UTC)
         try:
             data, timeout_result = await with_timeout(perceive_fn(), timeout)
-            duration = (datetime.utcnow() - start).total_seconds()
+            duration = (datetime.now(UTC) - start).total_seconds()
 
             if timeout_result.timed_out:
                 return PhaseResult(
@@ -509,7 +509,7 @@ class ThreePhaseExecutor:
                 duration_seconds=duration,
             )
         except Exception as e:
-            duration = (datetime.utcnow() - start).total_seconds()
+            duration = (datetime.now(UTC) - start).total_seconds()
             return PhaseResult(
                 phase=ExecutionPhase.PERCEIVE,
                 agent_id=agent_id,
@@ -536,10 +536,10 @@ class ThreePhaseExecutor:
         Returns:
             PhaseResult with action decision
         """
-        start = datetime.utcnow()
+        start = datetime.now(UTC)
         try:
             data, timeout_result = await with_timeout(act_fn(perception_data), timeout)
-            duration = (datetime.utcnow() - start).total_seconds()
+            duration = (datetime.now(UTC) - start).total_seconds()
 
             if timeout_result.timed_out:
                 return PhaseResult(
@@ -558,7 +558,7 @@ class ThreePhaseExecutor:
                 duration_seconds=duration,
             )
         except Exception as e:
-            duration = (datetime.utcnow() - start).total_seconds()
+            duration = (datetime.now(UTC) - start).total_seconds()
             return PhaseResult(
                 phase=ExecutionPhase.ACT,
                 agent_id=agent_id,
@@ -585,10 +585,10 @@ class ThreePhaseExecutor:
         Returns:
             PhaseResult with commit result
         """
-        start = datetime.utcnow()
+        start = datetime.now(UTC)
         try:
             data, timeout_result = await with_timeout(commit_fn(action_data), timeout)
-            duration = (datetime.utcnow() - start).total_seconds()
+            duration = (datetime.now(UTC) - start).total_seconds()
 
             if timeout_result.timed_out:
                 return PhaseResult(
@@ -607,7 +607,7 @@ class ThreePhaseExecutor:
                 duration_seconds=duration,
             )
         except Exception as e:
-            duration = (datetime.utcnow() - start).total_seconds()
+            duration = (datetime.now(UTC) - start).total_seconds()
             return PhaseResult(
                 phase=ExecutionPhase.COMMIT,
                 agent_id=agent_id,

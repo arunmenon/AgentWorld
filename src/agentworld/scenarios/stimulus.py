@@ -6,7 +6,7 @@ announcements, or environmental changes.
 """
 
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import UTC, datetime
 from enum import Enum
 from typing import Any, Callable, Awaitable
 import uuid
@@ -75,7 +75,7 @@ class Stimulus:
         if isinstance(created_at, str):
             created_at = datetime.fromisoformat(created_at)
         else:
-            created_at = datetime.utcnow()
+            created_at = datetime.now(UTC)
 
         injected_at = data.get("injected_at")
         if isinstance(injected_at, str):
@@ -299,7 +299,7 @@ class StimulusInjector:
             stimulus: Stimulus to inject
             step: Current step number
         """
-        stimulus.injected_at = datetime.utcnow()
+        stimulus.injected_at = datetime.now(UTC)
         stimulus.injected_at_step = step
         self._history.append(stimulus)
 

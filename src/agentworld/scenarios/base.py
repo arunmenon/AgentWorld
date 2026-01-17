@@ -6,7 +6,7 @@ as specified in ADR-009.
 
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import UTC, datetime
 from enum import Enum
 from typing import Any
 import uuid
@@ -197,7 +197,7 @@ class Scenario(ABC):
         """Get scenario duration in seconds."""
         if self._start_time is None:
             return 0.0
-        end = self._end_time or datetime.utcnow()
+        end = self._end_time or datetime.now(UTC)
         return (end - self._start_time).total_seconds()
 
     @abstractmethod
@@ -326,17 +326,17 @@ class Scenario(ABC):
     def _mark_started(self) -> None:
         """Mark scenario as started."""
         self.status = ScenarioStatus.RUNNING
-        self._start_time = datetime.utcnow()
+        self._start_time = datetime.now(UTC)
 
     def _mark_completed(self) -> None:
         """Mark scenario as completed."""
         self.status = ScenarioStatus.COMPLETED
-        self._end_time = datetime.utcnow()
+        self._end_time = datetime.now(UTC)
 
     def _mark_failed(self, error: str | None = None) -> None:
         """Mark scenario as failed."""
         self.status = ScenarioStatus.FAILED
-        self._end_time = datetime.utcnow()
+        self._end_time = datetime.now(UTC)
         if error:
             self.config.metadata["error"] = error
 

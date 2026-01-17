@@ -1428,6 +1428,7 @@ if __name__ == "__main__":
 | 2026-01-16 | 7 | Phase 7 Real-time Web Visualization implementation - EventEmitter wired into simulation runner, realtimeStore with WebSocket/auto-reconnect/event batching, TopologyGraph (react-force-graph-2d), ConversationStream (virtualized react-window), AgentInspector (4-tab panel with radar chart), SimulationControls (progress bar, quick steps), StimulusInjector, SimulationDetail refactored | Claude |
 | 2026-01-16 | 7+ | Agent Infrastructure Features - ADR-016 (Agent Injection), ExportService (6 formats: JSONL/OpenAI/Anthropic/ShareGPT/Alpaca/DPO), Evaluation Framework (evaluator protocol, built-in evaluators, message_evaluations DB table), Export/Evaluation/Injection API endpoints, UI panels (ExportPanel, EvaluationPanel, AgentInjector), Circuit breaker + concurrency limits for external agents | Claude |
 | 2026-01-17 | - | Auto-tracked: ADR-009, ADR-011, ADR-012 (3 files modified) | Hook |
+| 2026-01-17 | 7+ | ADR-016 status updated to Accepted - agent injection fully implemented | Claude |
 
 ---
 

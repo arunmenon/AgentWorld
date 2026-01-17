@@ -7,7 +7,7 @@ as specified in ADR-011 using msgpack serialization.
 import json
 import uuid
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Any, Protocol
 import struct
 
@@ -44,7 +44,7 @@ class CheckpointMetadata:
         if isinstance(created_at, str):
             created_at = datetime.fromisoformat(created_at)
         else:
-            created_at = datetime.utcnow()
+            created_at = datetime.now(UTC)
 
         return cls(
             id=data["id"],

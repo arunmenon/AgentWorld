@@ -8,7 +8,7 @@ import hashlib
 import json
 import re
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import UTC, datetime
 from enum import Enum
 from pathlib import Path
 from typing import Any
@@ -236,7 +236,7 @@ class ExportService:
                 "excluded_agents": options.excluded_agents,
             },
             record_count=record_count,
-            created_at=datetime.utcnow().isoformat(),
+            created_at=datetime.now(UTC).isoformat(),
         )
 
     def export_jsonl(

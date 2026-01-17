@@ -1,7 +1,7 @@
 """Evaluation API endpoints."""
 
 import uuid
-from datetime import datetime
+from datetime import UTC, datetime
 
 from fastapi import APIRouter, HTTPException, Query
 
@@ -272,5 +272,5 @@ async def get_job_status(job_id: str):
         job_id=job_id,
         status="pending",
         progress={"current": 0, "total": 0},
-        created_at=datetime.utcnow(),
+        created_at=datetime.now(UTC),
     )

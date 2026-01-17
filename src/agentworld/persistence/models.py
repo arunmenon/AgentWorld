@@ -1,7 +1,7 @@
 """SQLAlchemy ORM models for AgentWorld."""
 
 import json
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Any
 
 from sqlalchemy import (
@@ -18,6 +18,11 @@ from sqlalchemy import (
 from sqlalchemy.orm import declarative_base, relationship
 
 from agentworld.core.models import SimulationStatus
+
+
+def _utc_now() -> datetime:
+    """Return current UTC time (timezone-aware)."""
+    return datetime.now(UTC)
 
 
 Base = declarative_base()
@@ -46,8 +51,8 @@ class SimulationModel(Base):
     total_steps = Column(Integer, default=10)
     total_tokens = Column(Integer, default=0)
     total_cost = Column(Float, default=0.0)
-    created_at = Column(DateTime, default=datetime.utcnow)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at = Column(DateTime, default=_utc_now)
+    updated_at = Column(DateTime, default=_utc_now, onupdate=_utc_now)
 
     # Relationships
     agents = relationship("AgentModel", back_populates="simulation", cascade="all, delete-orphan")
@@ -100,7 +105,7 @@ class AgentModel(Base):
     background = Column(Text, nullable=True)
     system_prompt = Column(Text, nullable=True)
     model = Column(String(100), nullable=True)
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=_utc_now)
 
     # Relationships
     simulation = relationship("SimulationModel", back_populates="agents")
@@ -150,7 +155,7 @@ class MessageModel(Base):
     receiver_id = Column(String(8), ForeignKey("agents.id"), nullable=True)
     content = Column(Text, nullable=False)
     step = Column(Integer, default=0)
-    timestamp = Column(DateTime, default=datetime.utcnow)
+    timestamp = Column(DateTime, default=_utc_now)
 
     # Relationships
     simulation = relationship("SimulationModel", back_populates="messages")
@@ -203,7 +208,7 @@ class MemoryModel(Base):
     location = Column(String(255), nullable=True)  # For observations
     source_memories = Column(Text, nullable=True)  # JSON list for reflections
     questions_addressed = Column(Text, nullable=True)  # JSON list for reflections
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=_utc_now)
 
     # Relationships
     agent = relationship("AgentModel")
@@ -268,7 +273,7 @@ class TopologyEdgeModel(Base):
     source_id = Column(String(8), nullable=False)
     target_id = Column(String(8), nullable=False)
     weight = Column(Float, default=1.0)
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=_utc_now)
 
     # Relationships
     simulation = relationship("SimulationModel")
@@ -305,7 +310,7 @@ class TopologyConfigModel(Base):
     topology_type = Column(String(50), nullable=False)
     directed = Column(Integer, default=0)  # Boolean as int
     config_json = Column(Text, nullable=True)  # Additional config like hub_id, k, p, etc.
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=_utc_now)
 
     # Relationships
     simulation = relationship("SimulationModel")
@@ -344,7 +349,7 @@ class CheckpointModel(Base):
     step = Column(Integer, nullable=False)
     state_blob = Column(LargeBinary, nullable=False)  # msgpack/JSON serialized state
     reason = Column(String(50), nullable=True)  # manual, auto, shutdown, pause
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=_utc_now)
 
     # Relationships
     simulation = relationship("SimulationModel")
@@ -390,7 +395,7 @@ class MetricsModel(Base):
     step = Column(Integer, nullable=False)
     metric_name = Column(String(100), nullable=False)
     metric_value = Column(Float, nullable=False)
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=_utc_now)
 
     # Relationships
     simulation = relationship("SimulationModel")
@@ -431,7 +436,7 @@ class LLMCacheModel(Base):
     prompt_tokens = Column(Integer, nullable=True)
     completion_tokens = Column(Integer, nullable=True)
     model = Column(String(100), nullable=False)
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=_utc_now)
     expires_at = Column(DateTime, nullable=True)  # NULL = never expires
 
     def to_dict(self) -> dict[str, Any]:
@@ -490,8 +495,8 @@ class PersonaLibraryModel(Base):
     created_by = Column(String(255), nullable=True)  # Creator identifier
     prompt_preview = Column(Text, nullable=True)  # Generated prompt preview
 
-    created_at = Column(DateTime, default=datetime.utcnow)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at = Column(DateTime, default=_utc_now)
+    updated_at = Column(DateTime, default=_utc_now, onupdate=_utc_now)
 
     def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary."""
@@ -552,8 +557,8 @@ class PersonaCollectionModel(Base):
     tags_json = Column(Text, nullable=True)  # List of tags for search
     is_public = Column(Integer, default=1, nullable=False)  # Boolean as int
     created_by = Column(String(255), nullable=True)
-    created_at = Column(DateTime, default=datetime.utcnow)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at = Column(DateTime, default=_utc_now)
+    updated_at = Column(DateTime, default=_utc_now, onupdate=_utc_now)
 
     # Relationships
     members = relationship("PersonaCollectionMemberModel", back_populates="collection", cascade="all, delete-orphan")
@@ -596,7 +601,7 @@ class PersonaCollectionMemberModel(Base):
     id = Column(Integer, primary_key=True, autoincrement=True)
     collection_id = Column(String(36), ForeignKey("persona_collections.id"), nullable=False)
     persona_id = Column(String(36), ForeignKey("persona_library.id"), nullable=False)
-    added_at = Column(DateTime, default=datetime.utcnow)
+    added_at = Column(DateTime, default=_utc_now)
     added_by = Column(String(255), nullable=True)
 
     # Relationships
@@ -657,8 +662,8 @@ class PopulationTemplateModel(Base):
     created_by = Column(String(255), nullable=True)
     usage_count = Column(Integer, default=0, nullable=False)
 
-    created_at = Column(DateTime, default=datetime.utcnow)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at = Column(DateTime, default=_utc_now)
+    updated_at = Column(DateTime, default=_utc_now, onupdate=_utc_now)
 
     def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary."""
@@ -731,8 +736,8 @@ class ExperimentModel(Base):
     variables_json = Column(Text, nullable=True)  # Additional variables
 
     # Timestamps
-    created_at = Column(DateTime, default=datetime.utcnow)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at = Column(DateTime, default=_utc_now)
+    updated_at = Column(DateTime, default=_utc_now, onupdate=_utc_now)
     started_at = Column(DateTime, nullable=True)
     completed_at = Column(DateTime, nullable=True)
 
@@ -811,7 +816,7 @@ class ExperimentVariantModel(Base):
     is_control = Column(Integer, default=0, nullable=False)  # Boolean as int
     order_index = Column(Integer, default=0, nullable=False)  # For ordering
     color = Column(String(50), nullable=True)  # UI color for visualization
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=_utc_now)
 
     # Relationships
     experiment = relationship("ExperimentModel")
@@ -872,7 +877,7 @@ class MessageEvaluationModel(Base):
     latency_ms = Column(Integer, default=0, nullable=False)
 
     # Timestamps
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=_utc_now)
 
     # Relationships
     message = relationship("MessageModel")
@@ -945,7 +950,7 @@ class ExperimentRunModel(Base):
     estimated_cost = Column(Float, nullable=True)
 
     # Timestamps
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=_utc_now)
     started_at = Column(DateTime, nullable=True)
     completed_at = Column(DateTime, nullable=True)
 

@@ -4,7 +4,7 @@ Provides both in-memory and database-backed caching per ADR-008.
 """
 
 import time
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 from typing import Any, Protocol
 
 
@@ -239,7 +239,7 @@ class DatabaseLLMCache:
             content = str(value)
 
         # Calculate expiration
-        expires_at = datetime.utcnow() + timedelta(seconds=self.ttl) if self.ttl > 0 else None
+        expires_at = datetime.now(UTC) + timedelta(seconds=self.ttl) if self.ttl > 0 else None
 
         # Store in database
         self.repository.save_llm_cache(
