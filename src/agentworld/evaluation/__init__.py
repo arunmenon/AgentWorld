@@ -41,6 +41,21 @@ from agentworld.evaluation.validators import (
     ValidationResult,
     Validator,
 )
+from agentworld.evaluation.evaluators import (
+    EvaluationResult,
+    EvaluationContext,
+    EvaluatorProtocol,
+    EvaluatorRegistry,
+    BaseEvaluator,
+    LLMEvaluator,
+    PersonaAdherenceEvaluator,
+    CoherenceEvaluator,
+    RelevanceEvaluator,
+    ConsistencyEvaluator,
+    LengthCheckEvaluator,
+    KeywordFilterEvaluator,
+    create_default_registry,
+)
 
 __all__ = [
     # Client
@@ -74,4 +89,18 @@ __all__ = [
     "ExperimentRunner",
     "compute_cohens_d",
     "interpret_effect_size",
+    # Evaluators
+    "EvaluationResult",
+    "EvaluationContext",
+    "EvaluatorProtocol",
+    "EvaluatorRegistry",
+    "BaseEvaluator",
+    "LLMEvaluator",
+    "PersonaAdherenceEvaluator",
+    "CoherenceEvaluator",
+    "RelevanceEvaluator",
+    "ConsistencyEvaluator",
+    "LengthCheckEvaluator",
+    "KeywordFilterEvaluator",
+    "create_default_registry",
 ]

@@ -33,6 +33,9 @@ import {
   ConversationStream,
   AgentInspector,
   SimulationControls,
+  ExportPanel,
+  AgentInjector,
+  EvaluationPanel,
   type Message,
   type Memory,
 } from '@/components/simulation'
@@ -398,6 +401,16 @@ export default function SimulationDetail() {
             </CardContent>
           </Card>
         </div>
+      </div>
+
+      {/* Advanced Tools Section */}
+      <div className="grid gap-6 lg:grid-cols-3">
+        <ExportPanel simulationId={id!} />
+        <EvaluationPanel simulationId={id!} />
+        <AgentInjector
+          simulationId={id!}
+          agents={agentsList}
+        />
       </div>
 
       {/* Agent Inspector */}

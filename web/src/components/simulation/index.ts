@@ -21,3 +21,9 @@ export type { SimulationControlsProps } from './SimulationControls'
 
 export { StimulusInjector } from './StimulusInjector'
 export type { StimulusInjectorProps } from './StimulusInjector'
+
+export { ExportPanel } from './ExportPanel'
+
+export { AgentInjector } from './AgentInjector'
+
+export { EvaluationPanel } from './EvaluationPanel'

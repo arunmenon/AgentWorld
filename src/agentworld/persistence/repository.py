@@ -1461,3 +1461,97 @@ class Repository:
         model.usage_count += 1
         self.session.commit()
         return True
+
+    # Message Evaluation methods (for export service)
+
+    def get_evaluations_for_simulation(
+        self,
+        simulation_id: str,
+        evaluator_name: str | None = None,
+    ) -> list[dict[str, Any]]:
+        """Get evaluations for messages in a simulation.
+
+        Args:
+            simulation_id: Simulation ID
+            evaluator_name: Optional filter by evaluator
+
+        Returns:
+            List of evaluation dictionaries
+        """
+        # Check if MessageEvaluationModel exists
+        try:
+            from agentworld.persistence.models import MessageEvaluationModel
+        except ImportError:
+            # Model not yet created, return empty list
+            return []
+
+        # Get message IDs for simulation
+        messages = self.get_messages_for_simulation(simulation_id)
+        message_ids = [m["id"] for m in messages]
+
+        if not message_ids:
+            return []
+
+        query = self.session.query(MessageEvaluationModel).filter(
+            MessageEvaluationModel.message_id.in_(message_ids)
+        )
+
+        if evaluator_name is not None:
+            query = query.filter_by(evaluator_name=evaluator_name)
+
+        return [model.to_dict() for model in query.all()]
+
+    def save_evaluation(self, evaluation_data: dict[str, Any]) -> str:
+        """Save a message evaluation.
+
+        Args:
+            evaluation_data: Evaluation data dictionary
+
+        Returns:
+            Evaluation ID
+        """
+        try:
+            from agentworld.persistence.models import MessageEvaluationModel
+        except ImportError:
+            raise RuntimeError("MessageEvaluationModel not yet available")
+
+        model = MessageEvaluationModel.from_dict(evaluation_data)
+        self.session.merge(model)
+        self.session.commit()
+        return model.id
+
+    def get_evaluation(self, evaluation_id: str) -> dict[str, Any] | None:
+        """Get an evaluation by ID.
+
+        Args:
+            evaluation_id: Evaluation ID
+
+        Returns:
+            Evaluation data or None if not found
+        """
+        try:
+            from agentworld.persistence.models import MessageEvaluationModel
+        except ImportError:
+            return None
+
+        model = self.session.query(MessageEvaluationModel).filter_by(id=evaluation_id).first()
+        if model is None:
+            return None
+        return model.to_dict()
+
+    def get_evaluations_for_message(self, message_id: str) -> list[dict[str, Any]]:
+        """Get all evaluations for a specific message.
+
+        Args:
+            message_id: Message ID
+
+        Returns:
+            List of evaluation dictionaries
+        """
+        try:
+            from agentworld.persistence.models import MessageEvaluationModel
+        except ImportError:
+            return []
+
+        models = self.session.query(MessageEvaluationModel).filter_by(message_id=message_id).all()
+        return [model.to_dict() for model in models]

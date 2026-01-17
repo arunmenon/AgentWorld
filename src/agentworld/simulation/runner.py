@@ -1,10 +1,11 @@
 """Simulation runner."""
 
 import asyncio
+import logging
 import uuid
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Any, Callable, Awaitable, Optional
+from typing import Any, Callable, Awaitable, Optional, TYPE_CHECKING
 
 from agentworld.core.models import Message, SimulationConfig, SimulationStatus
 from agentworld.core.exceptions import SimulationError
@@ -22,6 +23,11 @@ from agentworld.simulation.control import (
 )
 from agentworld.plugins.hooks import PluginHooks
 from agentworld.api.events import SimulationEventEmitter
+
+if TYPE_CHECKING:
+    from agentworld.agents.external import InjectedAgentManager
+
+logger = logging.getLogger(__name__)
 
 
 # Type alias for step callbacks
@@ -58,6 +64,7 @@ class Simulation:
     _topology: Topology | None = field(default=None, repr=False)
     _topology_graph: TopologyGraph | None = field(default=None, repr=False)
     _emitter: SimulationEventEmitter | None = field(default=None, repr=False)
+    _injection_manager: "InjectedAgentManager | None" = field(default=None, repr=False)
 
     @classmethod
     def from_config(cls, config: SimulationConfig) -> "Simulation":
@@ -131,6 +138,16 @@ class Simulation:
         if self._emitter is None:
             self._emitter = SimulationEventEmitter(self.id)
         return self._emitter
+
+    @property
+    def injection_manager(self) -> "InjectedAgentManager | None":
+        """Get the injection manager for external agents."""
+        return self._injection_manager
+
+    @injection_manager.setter
+    def injection_manager(self, value: "InjectedAgentManager") -> None:
+        """Set the injection manager."""
+        self._injection_manager = value
 
     def _initialize_topology(self) -> None:
         """Initialize topology based on configuration."""
@@ -298,6 +315,83 @@ class Simulation:
         }
         self.repository.save_message(message_data)
 
+    async def _generate_message_with_injection(
+        self,
+        agent: Agent,
+        prompt: str,
+        receiver_id: str | None,
+        step: int,
+    ) -> Message:
+        """Generate a message, using external agent if injected.
+
+        Args:
+            agent: The agent generating the message
+            prompt: The prompt/context for generation
+            receiver_id: Target receiver ID
+            step: Current simulation step
+
+        Returns:
+            Generated message
+        """
+        # Check if agent has an injected external endpoint
+        if self._injection_manager and self._injection_manager.is_injected(agent.id):
+            provider = self._injection_manager.get(agent.id)
+            if provider:
+                try:
+                    # Build conversation history
+                    conversation_history = [
+                        {
+                            "sender_id": msg.sender_id,
+                            "sender": self.get_agent(msg.sender_id).name if self.get_agent(msg.sender_id) else msg.sender_id,
+                            "content": msg.content,
+                            "timestamp": msg.timestamp.isoformat(),
+                        }
+                        for msg in self._messages[-10:]
+                    ]
+
+                    # Call external agent
+                    response_text, metrics = await provider.generate_response(
+                        agent=agent,
+                        stimulus=prompt,
+                        conversation_history=conversation_history,
+                        run_id=self.id,
+                        turn_id=str(uuid.uuid4()),
+                        simulation_config=self.config.to_dict() if self.config else None,
+                    )
+
+                    # If we got a response, create message from it
+                    if response_text:
+                        logger.info(
+                            f"External agent response for {agent.name}: {response_text[:100]}..."
+                        )
+                        return Message(
+                            id=str(uuid.uuid4())[:8],
+                            sender_id=agent.id,
+                            receiver_id=receiver_id,
+                            content=response_text,
+                            step=step,
+                            timestamp=datetime.now(),
+                        )
+
+                    # Empty response means fallback to simulated agent
+                    logger.info(
+                        f"External agent returned empty response for {agent.name}, "
+                        f"falling back to simulated agent"
+                    )
+
+                except Exception as e:
+                    logger.warning(
+                        f"External agent error for {agent.name}: {e}, "
+                        f"falling back to simulated agent"
+                    )
+
+        # Use internal agent (either no injection or fallback)
+        return await agent.generate_message(
+            prompt=prompt,
+            receiver_id=receiver_id,
+            step=step,
+        )
+
     def _build_context(self, for_agent: Agent, recent_count: int = 5) -> str:
         """Build context string for an agent.
 
@@ -437,7 +531,9 @@ class Simulation:
             else:
                 prompt = f"{context}\n\nContinue the conversation naturally. Respond to what others have said or add your own perspective."
 
-            message = await agent.generate_message(
+            # Use injection-aware message generation
+            message = await self._generate_message_with_injection(
+                agent=agent,
                 prompt=prompt,
                 receiver_id=receiver_id,
                 step=self.current_step,
@@ -531,7 +627,9 @@ class Simulation:
             else:
                 prompt = f"{context}\n\nContinue the conversation naturally. Respond to what others have said or add your own perspective."
 
-            return await agent.generate_message(
+            # Use injection-aware message generation
+            return await self._generate_message_with_injection(
+                agent=agent,
                 prompt=prompt,
                 receiver_id=receiver_id,
                 step=self.current_step,

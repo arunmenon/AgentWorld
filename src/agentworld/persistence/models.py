@@ -845,6 +845,73 @@ class ExperimentVariantModel(Base):
         )
 
 
+class MessageEvaluationModel(Base):
+    """Database model for message evaluations.
+
+    Stores evaluation scores and metadata for messages,
+    supporting training data quality filtering and agent benchmarking
+    per ADR-010 and ADR-016.
+    """
+
+    __tablename__ = "message_evaluations"
+
+    id = Column(String(36), primary_key=True)
+    message_id = Column(String(8), ForeignKey("messages.id"), nullable=False)
+    evaluator_name = Column(String(100), nullable=False)
+    score = Column(Float, nullable=False)  # 0.0 - 1.0
+    explanation = Column(Text, nullable=True)  # User-facing rationale
+
+    # Provenance metadata (per ADR-010 amendment)
+    evaluator_version = Column(String(50), nullable=False)
+    judge_model = Column(String(100), nullable=True)  # If LLM-as-judge
+    judge_prompt_hash = Column(String(64), nullable=True)
+    input_hash = Column(String(64), nullable=False)  # What was judged
+
+    # Operational metadata
+    cost_usd = Column(Float, default=0.0, nullable=False)
+    latency_ms = Column(Integer, default=0, nullable=False)
+
+    # Timestamps
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    # Relationships
+    message = relationship("MessageModel")
+
+    def to_dict(self) -> dict[str, Any]:
+        """Convert to dictionary."""
+        return {
+            "id": self.id,
+            "message_id": self.message_id,
+            "evaluator_name": self.evaluator_name,
+            "score": self.score,
+            "explanation": self.explanation,
+            "evaluator_version": self.evaluator_version,
+            "judge_model": self.judge_model,
+            "judge_prompt_hash": self.judge_prompt_hash,
+            "input_hash": self.input_hash,
+            "cost_usd": self.cost_usd,
+            "latency_ms": self.latency_ms,
+            "created_at": self.created_at.isoformat() if self.created_at else None,
+        }
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> "MessageEvaluationModel":
+        """Create from dictionary."""
+        return cls(
+            id=data["id"],
+            message_id=data["message_id"],
+            evaluator_name=data["evaluator_name"],
+            score=data["score"],
+            explanation=data.get("explanation"),
+            evaluator_version=data["evaluator_version"],
+            judge_model=data.get("judge_model"),
+            judge_prompt_hash=data.get("judge_prompt_hash"),
+            input_hash=data["input_hash"],
+            cost_usd=data.get("cost_usd", 0.0),
+            latency_ms=data.get("latency_ms", 0),
+        )
+
+
 class ExperimentRunModel(Base):
     """Database model for individual experiment runs.
 

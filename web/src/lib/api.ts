@@ -339,4 +339,199 @@ export const api = {
   checkHealth: async () => {
     return request<{ status: string; version: string; api_version: string }>('/health')
   },
+
+  // Export
+  getExportFormats: async (simulationId: string) => {
+    return request<{
+      simulation_id: string
+      available_formats: string[]
+      message_count: number
+      has_evaluations: boolean
+    }>(`/simulations/${simulationId}/export/formats`)
+  },
+
+  exportSimulation: async (
+    simulationId: string,
+    options: {
+      format: string
+      redaction?: string
+      anonymize?: boolean
+      min_score?: number
+      inline?: boolean
+    }
+  ) => {
+    const params = new URLSearchParams()
+    params.set('format', options.format)
+    if (options.redaction) params.set('redaction', options.redaction)
+    if (options.anonymize) params.set('anonymize', 'true')
+    if (options.min_score !== undefined) params.set('min_score', options.min_score.toString())
+    if (options.inline) params.set('inline', 'true')
+
+    return request<{
+      simulation_id: string
+      format: string
+      record_count: number
+      manifest?: Record<string, unknown>
+      data?: unknown[]
+    }>(`/simulations/${simulationId}/export?${params.toString()}`)
+  },
+
+  downloadExport: async (simulationId: string, format: string, options?: {
+    redaction?: string
+    anonymize?: boolean
+    min_score?: number
+  }) => {
+    const params = new URLSearchParams()
+    params.set('format', format)
+    if (options?.redaction) params.set('redaction', options.redaction)
+    if (options?.anonymize) params.set('anonymize', 'true')
+    if (options?.min_score !== undefined) params.set('min_score', options.min_score.toString())
+
+    const response = await fetch(`${API_BASE}/simulations/${simulationId}/export?${params.toString()}`)
+    if (!response.ok) throw new Error('Export failed')
+    return response.blob()
+  },
+
+  // Evaluation
+  runEvaluation: async (
+    simulationId: string,
+    options?: {
+      evaluator_names?: string[]
+      message_ids?: string[]
+      async_mode?: boolean
+    }
+  ) => {
+    return request<{
+      simulation_id: string
+      job_id?: string
+      status: string
+      evaluations_run: number
+      message: string
+    }>(`/simulations/${simulationId}/evaluate`, {
+      method: 'POST',
+      body: options || {},
+    })
+  },
+
+  getEvaluations: async (
+    simulationId: string,
+    options?: {
+      evaluator_name?: string
+      min_score?: number
+      max_score?: number
+    }
+  ) => {
+    const params = new URLSearchParams()
+    if (options?.evaluator_name) params.set('evaluator_name', options.evaluator_name)
+    if (options?.min_score !== undefined) params.set('min_score', options.min_score.toString())
+    if (options?.max_score !== undefined) params.set('max_score', options.max_score.toString())
+    const query = params.toString()
+
+    return request<{
+      evaluations: Array<{
+        id: string
+        message_id: string
+        evaluator_name: string
+        score: number
+        explanation: string | null
+        evaluator_version: string
+        passed: boolean
+        created_at: string | null
+      }>
+      total: number
+      simulation_id: string
+    }>(`/simulations/${simulationId}/evaluations${query ? `?${query}` : ''}`)
+  },
+
+  getEvaluationSummary: async (simulationId: string) => {
+    return request<{
+      simulation_id: string
+      evaluator_summaries: Record<string, {
+        evaluator_name: string
+        count: number
+        average_score: number
+        min_score: number
+        max_score: number
+        pass_rate: number
+        total_cost_usd: number
+      }>
+      total_evaluations: number
+      average_score: number
+      pass_rate: number
+      total_cost_usd: number
+      total_latency_ms: number
+    }>(`/simulations/${simulationId}/evaluations/summary`)
+  },
+
+  // Agent Injection
+  injectAgent: async (
+    simulationId: string,
+    data: {
+      agent_id: string
+      endpoint_url: string
+      api_key?: string
+      timeout_seconds?: number
+      privacy_tier?: string
+      fallback_to_simulated?: boolean
+      max_retries?: number
+    }
+  ) => {
+    return request<{
+      simulation_id: string
+      agent_id: string
+      success: boolean
+      message: string
+      is_healthy: boolean | null
+    }>(`/simulations/${simulationId}/inject-agent`, {
+      method: 'POST',
+      body: data,
+    })
+  },
+
+  removeInjectedAgent: async (simulationId: string, agentId: string) => {
+    return request<{ success: boolean }>(`/simulations/${simulationId}/inject-agent/${agentId}`, {
+      method: 'DELETE',
+    })
+  },
+
+  getInjectedAgents: async (simulationId: string) => {
+    return request<{
+      simulation_id: string
+      injected_agents: Array<{
+        agent_id: string
+        endpoint_url: string
+        privacy_tier: string
+        fallback_to_simulated: boolean
+        circuit_state: string
+        is_healthy: boolean | null
+      }>
+      total: number
+    }>(`/simulations/${simulationId}/injected-agents`)
+  },
+
+  getInjectionMetrics: async (simulationId: string, agentId: string) => {
+    return request<{
+      agent_id: string
+      total_calls: number
+      successful_calls: number
+      failed_calls: number
+      error_rate: number
+      timeout_rate: number
+      latency_p50_ms: number
+      latency_p99_ms: number
+      circuit_state: string
+    }>(`/simulations/${simulationId}/inject-agent/${agentId}/metrics`)
+  },
+
+  checkInjectionHealth: async (simulationId: string, agentId: string) => {
+    return request<{
+      agent_id: string
+      endpoint_url: string
+      is_healthy: boolean
+      latency_ms: number | null
+      error: string | null
+    }>(`/simulations/${simulationId}/inject-agent/${agentId}/health-check`, {
+      method: 'POST',
+    })
+  },
 }

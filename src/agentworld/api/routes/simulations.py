@@ -1,5 +1,6 @@
 """Simulation API endpoints."""
 
+import time
 import uuid
 from datetime import datetime
 from typing import Optional
@@ -19,10 +20,22 @@ from agentworld.api.schemas.simulations import (
     InjectResponse,
     SimulationControlResponse,
 )
+from agentworld.api.schemas.injection import (
+    InjectAgentRequest,
+    InjectedAgentResponse,
+    InjectedAgentListResponse,
+    InjectedAgentMetricsResponse,
+    InjectAgentResponse,
+    HealthCheckResponse,
+)
 from agentworld.api.schemas.common import MetaResponse
 
 
 router = APIRouter()
+
+# In-memory storage for injected agents per simulation
+# In production, this should be persisted
+_injected_agents: dict[str, "InjectedAgentManager"] = {}
 
 
 def get_repo() -> Repository:
@@ -285,6 +298,9 @@ async def execute_step(simulation_id: str, request: StepRequest):
         if i < len(agents_data):
             agent.id = agents_data[i].get("id", agent.id)
 
+    # Connect injection manager for external agents
+    sim.injection_manager = _get_injection_manager(simulation_id)
+
     # Execute the requested number of steps
     total_messages = 0
     steps_executed = 0
@@ -337,4 +353,222 @@ async def inject_stimulus(simulation_id: str, request: InjectRequest):
         injected=True,
         content=request.content,
         affected_agents=affected,
+    )
+
+
+# Agent Injection Endpoints (per ADR-016)
+
+
+def _get_injection_manager(simulation_id: str) -> "InjectedAgentManager":
+    """Get or create injection manager for a simulation."""
+    from agentworld.agents.external import InjectedAgentManager
+
+    if simulation_id not in _injected_agents:
+        _injected_agents[simulation_id] = InjectedAgentManager()
+    return _injected_agents[simulation_id]
+
+
+@router.post(
+    "/simulations/{simulation_id}/inject-agent",
+    response_model=InjectAgentResponse
+)
+async def inject_agent(simulation_id: str, request: InjectAgentRequest):
+    """Register an external agent for a simulation.
+
+    Replaces the specified agent with an external HTTP endpoint.
+    """
+    from agentworld.agents.external import (
+        ExternalAgentConfig,
+        PrivacyTier,
+    )
+
+    repo = get_repo()
+    sim = repo.get_simulation(simulation_id)
+
+    if not sim:
+        raise HTTPException(status_code=404, detail={
+            "code": "SIMULATION_NOT_FOUND",
+            "message": f"Simulation '{simulation_id}' not found",
+        })
+
+    # Verify agent exists
+    agents = repo.get_agents_for_simulation(simulation_id)
+    agent_ids = [a["id"] for a in agents]
+    if request.agent_id not in agent_ids:
+        raise HTTPException(status_code=404, detail={
+            "code": "AGENT_NOT_FOUND",
+            "message": f"Agent '{request.agent_id}' not found in simulation",
+        })
+
+    # Validate privacy tier
+    try:
+        privacy_tier = PrivacyTier(request.privacy_tier)
+    except ValueError:
+        raise HTTPException(status_code=400, detail={
+            "code": "INVALID_PRIVACY_TIER",
+            "message": f"Invalid privacy tier: {request.privacy_tier}",
+        })
+
+    # Create config and inject
+    config = ExternalAgentConfig(
+        endpoint_url=request.endpoint_url,
+        api_key=request.api_key,
+        timeout_seconds=request.timeout_seconds,
+        privacy_tier=privacy_tier,
+        fallback_to_simulated=request.fallback_to_simulated,
+        max_retries=request.max_retries,
+    )
+
+    manager = _get_injection_manager(simulation_id)
+    provider = manager.inject(request.agent_id, config)
+
+    # Run health check
+    is_healthy = await provider.health_check()
+
+    return InjectAgentResponse(
+        simulation_id=simulation_id,
+        agent_id=request.agent_id,
+        success=True,
+        message="Agent injected successfully",
+        is_healthy=is_healthy,
+    )
+
+
+@router.delete("/simulations/{simulation_id}/inject-agent/{agent_id}")
+async def remove_injected_agent(simulation_id: str, agent_id: str):
+    """Remove an injected external agent."""
+    repo = get_repo()
+    sim = repo.get_simulation(simulation_id)
+
+    if not sim:
+        raise HTTPException(status_code=404, detail={
+            "code": "SIMULATION_NOT_FOUND",
+            "message": f"Simulation '{simulation_id}' not found",
+        })
+
+    manager = _get_injection_manager(simulation_id)
+    removed = manager.remove(agent_id)
+
+    if not removed:
+        raise HTTPException(status_code=404, detail={
+            "code": "AGENT_NOT_INJECTED",
+            "message": f"Agent '{agent_id}' is not injected",
+        })
+
+    return {
+        "success": True,
+        "message": f"Agent '{agent_id}' removed from injection",
+        "meta": MetaResponse(request_id=str(uuid.uuid4())),
+    }
+
+
+@router.get(
+    "/simulations/{simulation_id}/injected-agents",
+    response_model=InjectedAgentListResponse
+)
+async def list_injected_agents(simulation_id: str):
+    """List all injected agents for a simulation."""
+    repo = get_repo()
+    sim = repo.get_simulation(simulation_id)
+
+    if not sim:
+        raise HTTPException(status_code=404, detail={
+            "code": "SIMULATION_NOT_FOUND",
+            "message": f"Simulation '{simulation_id}' not found",
+        })
+
+    manager = _get_injection_manager(simulation_id)
+    agent_ids = manager.list_injected()
+
+    responses = []
+    for agent_id in agent_ids:
+        provider = manager.get(agent_id)
+        if provider:
+            responses.append(InjectedAgentResponse(
+                agent_id=agent_id,
+                endpoint_url=provider.config.endpoint_url,
+                privacy_tier=provider.config.privacy_tier.value,
+                fallback_to_simulated=provider.config.fallback_to_simulated,
+                circuit_state=provider.circuit_breaker.state.value,
+            ))
+
+    return InjectedAgentListResponse(
+        simulation_id=simulation_id,
+        injected_agents=responses,
+        total=len(responses),
+    )
+
+
+@router.get(
+    "/simulations/{simulation_id}/inject-agent/{agent_id}/metrics",
+    response_model=InjectedAgentMetricsResponse
+)
+async def get_injection_metrics(simulation_id: str, agent_id: str):
+    """Get metrics for an injected agent."""
+    repo = get_repo()
+    sim = repo.get_simulation(simulation_id)
+
+    if not sim:
+        raise HTTPException(status_code=404, detail={
+            "code": "SIMULATION_NOT_FOUND",
+            "message": f"Simulation '{simulation_id}' not found",
+        })
+
+    manager = _get_injection_manager(simulation_id)
+    provider = manager.get(agent_id)
+
+    if not provider:
+        raise HTTPException(status_code=404, detail={
+            "code": "AGENT_NOT_INJECTED",
+            "message": f"Agent '{agent_id}' is not injected",
+        })
+
+    metrics = provider.metrics
+    return InjectedAgentMetricsResponse(
+        agent_id=agent_id,
+        total_calls=metrics.total_calls,
+        successful_calls=metrics.successful_calls,
+        failed_calls=metrics.failed_calls,
+        error_rate=metrics.error_rate,
+        timeout_rate=metrics.timeout_rate,
+        latency_p50_ms=metrics.latency_p50_ms,
+        latency_p99_ms=metrics.latency_p99_ms,
+        circuit_state=metrics.circuit_state,
+    )
+
+
+@router.post(
+    "/simulations/{simulation_id}/inject-agent/{agent_id}/health-check",
+    response_model=HealthCheckResponse
+)
+async def check_injection_health(simulation_id: str, agent_id: str):
+    """Run health check on an injected agent endpoint."""
+    repo = get_repo()
+    sim = repo.get_simulation(simulation_id)
+
+    if not sim:
+        raise HTTPException(status_code=404, detail={
+            "code": "SIMULATION_NOT_FOUND",
+            "message": f"Simulation '{simulation_id}' not found",
+        })
+
+    manager = _get_injection_manager(simulation_id)
+    provider = manager.get(agent_id)
+
+    if not provider:
+        raise HTTPException(status_code=404, detail={
+            "code": "AGENT_NOT_INJECTED",
+            "message": f"Agent '{agent_id}' is not injected",
+        })
+
+    start_time = time.time()
+    is_healthy = await provider.health_check()
+    latency_ms = int((time.time() - start_time) * 1000)
+
+    return HealthCheckResponse(
+        agent_id=agent_id,
+        endpoint_url=provider.config.endpoint_url,
+        is_healthy=is_healthy,
+        latency_ms=latency_ms if is_healthy else None,
+        error=None if is_healthy else "Health check failed",
     )

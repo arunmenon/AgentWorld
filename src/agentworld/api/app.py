@@ -62,6 +62,8 @@ def create_app(
         messages,
         personas,
         health,
+        evaluation,
+        export,
     )
 
     app.include_router(health.router, tags=["Health"])
@@ -69,6 +71,8 @@ def create_app(
     app.include_router(agents.router, prefix="/api/v1", tags=["Agents"])
     app.include_router(messages.router, prefix="/api/v1", tags=["Messages"])
     app.include_router(personas.router, prefix="/api/v1", tags=["Personas"])
+    app.include_router(evaluation.router, prefix="/api/v1", tags=["Evaluation"])
+    app.include_router(export.router, prefix="/api/v1", tags=["Export"])
 
     # Register WebSocket
     from agentworld.api.websocket import register_websocket

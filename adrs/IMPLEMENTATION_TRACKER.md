@@ -1,8 +1,8 @@
 # AgentWorld Implementation Tracker
 
 > **Last Updated:** 2026-01-16
-> **Current Phase:** Phase 7 - Real-time Web (IN PROGRESS)
-> **Overall Progress:** 15/23 ADRs implemented (Phase 1: ADR-003, ADR-004, ADR-008, UI-ADR-005; Phase 2: ADR-005, ADR-006; Phase 3: ADR-009, ADR-011; Phase 4+: ADR-010, ADR-014, ADR-015; Phase 5: ADR-012, ADR-013; Phase 6: UI-ADR-001, UI-ADR-002; Phase 7: UI-ADR-003, UI-ADR-004)
+> **Current Phase:** Phase 7+ - Agent Infrastructure Features (COMPLETE)
+> **Overall Progress:** 16/24 ADRs implemented (Phase 1: ADR-003, ADR-004, ADR-008, UI-ADR-005; Phase 2: ADR-005, ADR-006; Phase 3: ADR-009, ADR-011; Phase 4+: ADR-010, ADR-014, ADR-015; Phase 5: ADR-012, ADR-013; Phase 6: UI-ADR-001, UI-ADR-002; Phase 7: UI-ADR-003, UI-ADR-004; Phase 7+: ADR-016)
 
 ---
 
@@ -1426,6 +1426,73 @@ if __name__ == "__main__":
 | 2026-01-16 | 5 | Phase 5 API Layer complete - FastAPI app, REST endpoints (simulations, agents, messages, personas, collections, health), WebSocket (global & per-simulation events), Pydantic schemas, 38 tests passing | Claude |
 | 2026-01-16 | 6 | Phase 6 Web Foundation complete - React/Vite/TypeScript, Tailwind dark theme, UI components (Button, Card, Badge, Modal, etc.), React Router with Shell layout, 6 pages (Dashboard, Simulations, Personas, Settings), Zustand + React Query, API client, 30 tests passing | Claude |
 | 2026-01-16 | 7 | Phase 7 Real-time Web Visualization implementation - EventEmitter wired into simulation runner, realtimeStore with WebSocket/auto-reconnect/event batching, TopologyGraph (react-force-graph-2d), ConversationStream (virtualized react-window), AgentInspector (4-tab panel with radar chart), SimulationControls (progress bar, quick steps), StimulusInjector, SimulationDetail refactored | Claude |
+| 2026-01-16 | 7+ | Agent Infrastructure Features - ADR-016 (Agent Injection), ExportService (6 formats: JSONL/OpenAI/Anthropic/ShareGPT/Alpaca/DPO), Evaluation Framework (evaluator protocol, built-in evaluators, message_evaluations DB table), Export/Evaluation/Injection API endpoints, UI panels (ExportPanel, EvaluationPanel, AgentInjector), Circuit breaker + concurrency limits for external agents | Claude |
+| 2026-01-17 | - | Auto-tracked: ADR-009, ADR-011, ADR-012 (3 files modified) | Hook |
+
+---
+
+## Agent Infrastructure Features (ADR-016+)
+
+**Goal:** Support agent testing and training data generation workflows
+**Exit Criteria:** Can inject external agents, export fine-tuning data, evaluate message quality
+**Status:** 🟢 Complete
+**Depends On:** Phase 7 ✅
+
+### ADR-016: Agent Injection
+
+| Component | Status | File(s) | Verification | Notes |
+|-----------|--------|---------|--------------|-------|
+| ADR-016 Documentation | 🟢 | `adrs/ADR-016-agent-injection.md` | File exists | HTTP protocol, privacy tiers, circuit breaker |
+| External Agent Provider | 🟢 | `src/agentworld/agents/external.py` | `pytest tests/agents/` | Privacy tiers, request/response schema |
+| Circuit Breaker | 🟢 | `src/agentworld/agents/external.py` | `pytest tests/agents/` | CLOSED/OPEN/HALF_OPEN states |
+| Concurrency Limits | 🟢 | `src/agentworld/agents/external.py` | `pytest tests/agents/` | Semaphore-based rate limiting |
+| Injected Agent Manager | 🟢 | `src/agentworld/agents/external.py` | `pytest tests/agents/` | Per-simulation management |
+| Injection API Endpoints | 🟢 | `src/agentworld/api/routes/simulations.py` | `pytest tests/api/` | inject-agent, metrics, health-check |
+| Injection Schemas | 🟢 | `src/agentworld/api/schemas/injection.py` | Import check | Request/Response Pydantic models |
+| AgentInjector UI | 🟢 | `web/src/components/simulation/AgentInjector.tsx` | TypeScript check | Privacy tier selection, metrics modal |
+
+### Export Pipeline
+
+| Component | Status | File(s) | Verification | Notes |
+|-----------|--------|---------|--------------|-------|
+| Export Service | 🟢 | `src/agentworld/services/export.py` | `pytest tests/services/` | 6 formats, redaction, manifest |
+| JSONL Format | 🟢 | `src/agentworld/services/export.py` | `pytest tests/services/` | Raw messages |
+| OpenAI Format | 🟢 | `src/agentworld/services/export.py` | `pytest tests/services/` | Fine-tuning format |
+| Anthropic Format | 🟢 | `src/agentworld/services/export.py` | `pytest tests/services/` | Fine-tuning format |
+| ShareGPT Format | 🟢 | `src/agentworld/services/export.py` | `pytest tests/services/` | Open-source models |
+| Alpaca Format | 🟢 | `src/agentworld/services/export.py` | `pytest tests/services/` | Instruction tuning |
+| DPO Pairs Format | 🟢 | `src/agentworld/services/export.py` | `pytest tests/services/` | Preference pairs from scores |
+| Redaction Profiles | 🟢 | `src/agentworld/services/export.py` | `pytest tests/services/` | none, basic, strict |
+| Export Manifest | 🟢 | `src/agentworld/services/export.py` | `pytest tests/services/` | SHA256 hashes, provenance |
+| Export API Endpoints | 🟢 | `src/agentworld/api/routes/export.py` | `pytest tests/api/` | formats, download, manifest |
+| Export Schemas | 🟢 | `src/agentworld/api/schemas/export.py` | Import check | Request/Response Pydantic models |
+| ExportPanel UI | 🟢 | `web/src/components/simulation/ExportPanel.tsx` | TypeScript check | Format/redaction selection, download |
+
+### Evaluation Framework
+
+| Component | Status | File(s) | Verification | Notes |
+|-----------|--------|---------|--------------|-------|
+| message_evaluations Table | 🟢 | `src/agentworld/persistence/models.py` | `pytest tests/persistence/` | Provenance fields |
+| Evaluator Protocol | 🟢 | `src/agentworld/evaluation/evaluators.py` | `pytest tests/evaluation/` | Protocol-based extensibility |
+| PersonaAdherenceEvaluator | 🟢 | `src/agentworld/evaluation/evaluators.py` | `pytest tests/evaluation/` | LLM-based |
+| CoherenceEvaluator | 🟢 | `src/agentworld/evaluation/evaluators.py` | `pytest tests/evaluation/` | LLM-based |
+| RelevanceEvaluator | 🟢 | `src/agentworld/evaluation/evaluators.py` | `pytest tests/evaluation/` | LLM-based |
+| ConsistencyEvaluator | 🟢 | `src/agentworld/evaluation/evaluators.py` | `pytest tests/evaluation/` | LLM-based |
+| LengthCheckEvaluator | 🟢 | `src/agentworld/evaluation/evaluators.py` | `pytest tests/evaluation/` | Heuristic |
+| KeywordFilterEvaluator | 🟢 | `src/agentworld/evaluation/evaluators.py` | `pytest tests/evaluation/` | Heuristic |
+| Evaluator Registry | 🟢 | `src/agentworld/evaluation/evaluators.py` | `pytest tests/evaluation/` | discover_evaluators() |
+| Evaluation API Endpoints | 🟢 | `src/agentworld/api/routes/evaluation.py` | `pytest tests/api/` | evaluate, evaluations, summary |
+| Evaluation Schemas | 🟢 | `src/agentworld/api/schemas/evaluation.py` | Import check | Request/Response Pydantic models |
+| EvaluationPanel UI | 🟢 | `web/src/components/simulation/EvaluationPanel.tsx` | TypeScript check | Run evaluators, view scores |
+
+### API Integration
+
+| Component | Status | File(s) | Verification | Notes |
+|-----------|--------|---------|--------------|-------|
+| Export API Methods | 🟢 | `web/src/lib/api.ts` | TypeScript check | getExportFormats, downloadExport |
+| Evaluation API Methods | 🟢 | `web/src/lib/api.ts` | TypeScript check | runEvaluation, getEvaluations |
+| Injection API Methods | 🟢 | `web/src/lib/api.ts` | TypeScript check | injectAgent, getInjectionMetrics |
+| SimulationDetail Integration | 🟢 | `web/src/pages/SimulationDetail.tsx` | TypeScript check | Advanced tools section |
 
 ---
 
