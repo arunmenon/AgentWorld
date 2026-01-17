@@ -73,10 +73,21 @@ async def run_evaluation(simulation_id: str, request: EvaluationRequest):
         EvaluationContext,
         create_default_registry,
     )
+    from agentworld.evaluation.client import LLMClient
+    from agentworld.llm.provider import get_provider
 
-    # Create evaluator registry with heuristic evaluators only
-    # (LLM evaluators require LLM client which we don't have in sync mode)
-    registry = create_default_registry()
+    # Check if any LLM-based evaluators are requested
+    llm_evaluators = {"persona_adherence", "coherence", "relevance", "consistency"}
+    requested_evaluators = set(request.evaluator_names or ["length_check", "keyword_filter"])
+    needs_llm = bool(requested_evaluators & llm_evaluators)
+
+    # Create evaluator registry
+    llm_client = None
+    if needs_llm:
+        provider = get_provider()
+        llm_client = LLMClient(provider)
+
+    registry = create_default_registry(llm_client=llm_client)
 
     # Get agents for context
     agents = repo.get_agents_for_simulation(simulation_id)

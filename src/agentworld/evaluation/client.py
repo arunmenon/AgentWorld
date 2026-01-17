@@ -60,17 +60,27 @@ class LLMClient:
         """
         import time
 
+        # Extract system prompt and user prompt from messages
+        system_prompt = None
+        prompt = ""
+        for msg in messages:
+            if msg.get("role") == "system":
+                system_prompt = msg.get("content", "")
+            elif msg.get("role") == "user":
+                prompt = msg.get("content", "")
+
         start = time.time()
-        record = await self._provider.acomplete(
-            messages=messages,
+        record = await self._provider.complete(
+            prompt=prompt,
+            system_prompt=system_prompt,
             temperature=temperature,
             max_tokens=max_tokens,
         )
         latency = (time.time() - start) * 1000
 
         return LLMResponse(
-            content=record.response_content,
-            tokens_used=record.prompt_tokens + record.completion_tokens,
+            content=record.content,
+            tokens_used=record.tokens_used,
             model=record.model,
             latency_ms=latency,
         )
