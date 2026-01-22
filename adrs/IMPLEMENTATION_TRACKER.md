@@ -1,8 +1,8 @@
 # AgentWorld Implementation Tracker
 
-> **Last Updated:** 2026-01-16
+> **Last Updated:** 2026-01-22
 > **Current Phase:** Phase 7+ - Agent Infrastructure Features (COMPLETE)
-> **Overall Progress:** 16/24 ADRs implemented (Phase 1: ADR-003, ADR-004, ADR-008, UI-ADR-005; Phase 2: ADR-005, ADR-006; Phase 3: ADR-009, ADR-011; Phase 4+: ADR-010, ADR-014, ADR-015; Phase 5: ADR-012, ADR-013; Phase 6: UI-ADR-001, UI-ADR-002; Phase 7: UI-ADR-003, UI-ADR-004; Phase 7+: ADR-016)
+> **Overall Progress:** 17/25 ADRs implemented (Phase 1: ADR-003, ADR-004, ADR-008, UI-ADR-005; Phase 2: ADR-005, ADR-006; Phase 3: ADR-009, ADR-011; Phase 4+: ADR-010, ADR-014, ADR-015; Phase 5: ADR-012, ADR-013; Phase 6: UI-ADR-001, UI-ADR-002; Phase 7: UI-ADR-003, UI-ADR-004; Phase 7+: ADR-016, ADR-017)
 
 ---
 
@@ -31,6 +31,7 @@
 | 7 | Real-time Web | 🟡 | 🔴 | UI-003, UI-004 | Live visualization | `scripts/verify_phase7.py` |
 | 8 | Advanced Web | 🔴 | 🔴 | UI-006, UI-007, UI-008 | Full web workflows | `scripts/verify_phase8.py` |
 | 9 | Production | 🟡 | 🟢 | 013+, 014, 015 | Security, plugins, traces | `scripts/verify_phase9.py` |
+| 10 | App Studio | 🔴 | 🔴 | 018, 019, 020, UI-009-013 | No-code app builder | `scripts/verify_phase10.py` |
 
 > **Test Status Legend:** 🟢 All tests pass | ⚠️ Tests incomplete | 🔴 No tests
 >
@@ -1135,6 +1136,252 @@ audit_logs (id, user_id, action, resource_type, resource_id, details_json, times
 
 ---
 
+## Phase 10: App Studio
+
+**Goal:** Enable non-developers to create simulated apps via a visual no-code builder
+**Exit Criteria:** Users can create, test, and deploy custom apps to simulations without writing code
+**Status:** 🔴 Not Started
+**Depends On:** Phase 7 (ADR-017 Simulated Apps), Phase 6 (Web Foundation)
+
+### ADR-018: App Studio Backend - Dynamic App Engine
+
+| Component | Status | File(s) | Verification | Notes |
+|-----------|--------|---------|--------------|-------|
+| AppDefinition dataclass | 🔴 | `src/agentworld/apps/definition.py` | `pytest tests/apps/test_definition.py` | |
+| DynamicApp class | 🔴 | `src/agentworld/apps/dynamic.py` | `pytest tests/apps/test_dynamic.py` | |
+| LogicEngine | 🔴 | `src/agentworld/apps/logic_engine.py` | `pytest tests/apps/test_logic_engine.py` | |
+| ExpressionEvaluator | 🔴 | `src/agentworld/apps/expression.py` | `pytest tests/apps/test_expression.py` | |
+| AppDefinitionModel | 🔴 | `src/agentworld/persistence/models.py` | `pytest tests/persistence/test_app_definitions.py` | |
+| CRUD API endpoints | 🔴 | `src/agentworld/api/routes/app_definitions.py` | `pytest tests/api/test_app_definitions.py` | |
+| API schemas | 🔴 | `src/agentworld/api/schemas/app_definitions.py` | Import test | |
+| Test endpoint | 🔴 | `src/agentworld/api/routes/app_definitions.py` | `pytest tests/api/test_app_definitions.py` | `/test` action |
+| Registry integration | 🔴 | `src/agentworld/apps/base.py` | `pytest tests/apps/test_registry.py` | Check DB for apps |
+
+### ADR-019: App Definition Schema & Logic Language
+
+| Component | Status | File(s) | Verification | Notes |
+|-----------|--------|---------|--------------|-------|
+| JSON Schema definition | 🔴 | `schemas/app_definition.schema.json` | Schema validation | |
+| Schema validator | 🔴 | `src/agentworld/apps/schema.py` | `pytest tests/apps/test_schema.py` | |
+| VALIDATE block execution | 🔴 | `src/agentworld/apps/logic_engine.py` | `pytest tests/apps/test_logic_engine.py` | |
+| UPDATE block execution | 🔴 | `src/agentworld/apps/logic_engine.py` | `pytest tests/apps/test_logic_engine.py` | |
+| NOTIFY block execution | 🔴 | `src/agentworld/apps/logic_engine.py` | `pytest tests/apps/test_logic_engine.py` | |
+| RETURN block execution | 🔴 | `src/agentworld/apps/logic_engine.py` | `pytest tests/apps/test_logic_engine.py` | |
+| ERROR block execution | 🔴 | `src/agentworld/apps/logic_engine.py` | `pytest tests/apps/test_logic_engine.py` | |
+| BRANCH block execution | 🔴 | `src/agentworld/apps/logic_engine.py` | `pytest tests/apps/test_logic_engine.py` | |
+| LOOP block execution | 🔴 | `src/agentworld/apps/logic_engine.py` | `pytest tests/apps/test_logic_engine.py` | |
+| Expression parser | 🔴 | `src/agentworld/apps/expression.py` | `pytest tests/apps/test_expression.py` | |
+| Built-in functions | 🔴 | `src/agentworld/apps/expression.py` | `pytest tests/apps/test_expression.py` | generate_id, timestamp, etc. |
+
+### UI-ADR-009: App Studio Library & Navigation
+
+| Component | Status | File(s) | Verification | Notes |
+|-----------|--------|---------|--------------|-------|
+| Apps page | 🔴 | `web/src/pages/Apps.tsx` | Page loads at /apps | |
+| Navigation item | 🔴 | `web/src/components/Layout.tsx` | App Studio in nav | |
+| AppCard component | 🔴 | `web/src/components/app-studio/AppCard.tsx` | Component renders | |
+| AppCardGrid component | 🔴 | `web/src/components/app-studio/AppCardGrid.tsx` | Grid layout works | |
+| Category tabs | 🔴 | `web/src/components/app-studio/AppCategoryTabs.tsx` | Filtering works | |
+| Search input | 🔴 | `web/src/components/app-studio/AppSearchInput.tsx` | Search filters | |
+| Empty state | 🔴 | `web/src/components/app-studio/AppEmptyState.tsx` | Shows when no apps | |
+| API client | 🔴 | `web/src/lib/api/app-definitions.ts` | API calls work | |
+| TypeScript types | 🔴 | `web/src/lib/types/apps.ts` | Types compile | |
+
+### UI-ADR-010: App Creation Wizard
+
+| Component | Status | File(s) | Verification | Notes |
+|-----------|--------|---------|--------------|-------|
+| AppCreate page | 🔴 | `web/src/pages/AppCreate.tsx` | Page loads at /apps/new | |
+| AppWizard component | 🔴 | `web/src/components/app-studio/AppWizard.tsx` | Wizard state machine | |
+| Step indicator | 🔴 | `web/src/components/app-studio/AppWizardSteps.tsx` | Steps shown | |
+| TemplateStep | 🔴 | `web/src/components/app-studio/steps/TemplateStep.tsx` | Template selection | |
+| InfoStep | 🔴 | `web/src/components/app-studio/steps/InfoStep.tsx` | Basic info form | |
+| ActionsStep | 🔴 | `web/src/components/app-studio/steps/ActionsStep.tsx` | Action list | |
+| TestStep | 🔴 | `web/src/components/app-studio/steps/TestStep.tsx` | Sandbox integration | |
+| TemplateCard | 🔴 | `web/src/components/app-studio/TemplateCard.tsx` | Template cards | |
+| ActionBuilder | 🔴 | `web/src/components/app-studio/ActionBuilder.tsx` | Action edit modal | |
+| ParameterEditor | 🔴 | `web/src/components/app-studio/ParameterEditor.tsx` | Parameter form | |
+| Templates data | 🔴 | `web/src/lib/templates/index.ts` | Template definitions | |
+| Draft persistence | 🔴 | `web/src/components/app-studio/AppWizard.tsx` | LocalStorage draft | |
+
+### UI-ADR-011: Visual Logic Builder
+
+| Component | Status | File(s) | Verification | Notes |
+|-----------|--------|---------|--------------|-------|
+| LogicCanvas | 🔴 | `web/src/components/app-studio/logic-builder/LogicCanvas.tsx` | Canvas renders | |
+| LogicBlock | 🔴 | `web/src/components/app-studio/logic-builder/LogicBlock.tsx` | Block container | |
+| ValidateBlock | 🔴 | `web/src/components/app-studio/logic-builder/blocks/ValidateBlock.tsx` | Block renders | |
+| UpdateBlock | 🔴 | `web/src/components/app-studio/logic-builder/blocks/UpdateBlock.tsx` | Block renders | |
+| NotifyBlock | 🔴 | `web/src/components/app-studio/logic-builder/blocks/NotifyBlock.tsx` | Block renders | |
+| ReturnBlock | 🔴 | `web/src/components/app-studio/logic-builder/blocks/ReturnBlock.tsx` | Block renders | |
+| ErrorBlock | 🔴 | `web/src/components/app-studio/logic-builder/blocks/ErrorBlock.tsx` | Block renders | |
+| BranchBlock | 🔴 | `web/src/components/app-studio/logic-builder/blocks/BranchBlock.tsx` | Block renders | |
+| LoopBlock | 🔴 | `web/src/components/app-studio/logic-builder/blocks/LoopBlock.tsx` | Block renders | |
+| BlockPalette | 🔴 | `web/src/components/app-studio/logic-builder/BlockPalette.tsx` | Drag from palette | |
+| BlockConnection | 🔴 | `web/src/components/app-studio/logic-builder/BlockConnection.tsx` | SVG lines | |
+| BlockConfigPanel | 🔴 | `web/src/components/app-studio/logic-builder/BlockConfigPanel.tsx` | Config panel | |
+| ExpressionEditor | 🔴 | `web/src/components/app-studio/logic-builder/ExpressionEditor.tsx` | Autocomplete | |
+| LogicValidator | 🔴 | `web/src/components/app-studio/logic-builder/LogicValidator.tsx` | Validation display | |
+| JsonEditor | 🔴 | `web/src/components/app-studio/logic-builder/JsonEditor.tsx` | JSON view | |
+| useLogicBuilder hook | 🔴 | `web/src/components/app-studio/logic-builder/hooks/useLogicBuilder.ts` | State hook | |
+| useAutoLayout hook | 🔴 | `web/src/components/app-studio/logic-builder/hooks/useAutoLayout.ts` | Layout hook | |
+
+### UI-ADR-012: App Test Sandbox
+
+| Component | Status | File(s) | Verification | Notes |
+|-----------|--------|---------|--------------|-------|
+| TestSandbox | 🔴 | `web/src/components/app-studio/sandbox/TestSandbox.tsx` | Sandbox renders | |
+| AgentSelector | 🔴 | `web/src/components/app-studio/sandbox/AgentSelector.tsx` | Agent dropdown | |
+| ActionSelector | 🔴 | `web/src/components/app-studio/sandbox/ActionSelector.tsx` | Action dropdown | |
+| ParameterForm | 🔴 | `web/src/components/app-studio/sandbox/ParameterForm.tsx` | Dynamic form | |
+| ResultDisplay | 🔴 | `web/src/components/app-studio/sandbox/ResultDisplay.tsx` | Result card | |
+| StateViewer | 🔴 | `web/src/components/app-studio/sandbox/StateViewer.tsx` | State tree | |
+| StateCard | 🔴 | `web/src/components/app-studio/sandbox/StateCard.tsx` | Agent state card | |
+| StateDiff | 🔴 | `web/src/components/app-studio/sandbox/StateDiff.tsx` | Diff highlight | |
+| ExecutionLog | 🔴 | `web/src/components/app-studio/sandbox/ExecutionLog.tsx` | Log list | |
+| ExecutionLogEntry | 🔴 | `web/src/components/app-studio/sandbox/ExecutionLogEntry.tsx` | Log entry | |
+| useSandbox hook | 🔴 | `web/src/components/app-studio/sandbox/hooks/useSandbox.ts` | State hook | |
+| useStateDiff hook | 🔴 | `web/src/components/app-studio/sandbox/hooks/useStateDiff.ts` | Diff hook | |
+
+### UI-ADR-013: Simulation App Integration
+
+| Component | Status | File(s) | Verification | Notes |
+|-----------|--------|---------|--------------|-------|
+| AppsSection | 🔴 | `web/src/components/simulation/apps/AppsSection.tsx` | Section renders | |
+| AppConfigCard | 🔴 | `web/src/components/simulation/apps/AppConfigCard.tsx` | Config card | |
+| AppPickerModal | 🔴 | `web/src/components/simulation/apps/AppPickerModal.tsx` | Picker modal | |
+| AppConfigModal | 🔴 | `web/src/components/simulation/apps/AppConfigModal.tsx` | Config modal | |
+| AppInstructions | 🔴 | `web/src/components/simulation/apps/AppInstructions.tsx` | Instructions preview | |
+| SimulationCreate update | 🔴 | `web/src/pages/SimulationCreate.tsx` | Apps section added | |
+| API payload update | 🔴 | `web/src/lib/api/simulations.ts` | Apps in payload | |
+| Backend schema update | 🔴 | `src/agentworld/api/schemas/simulations.py` | Apps field added | |
+
+### ADR-020: App Benchmark & Evaluation Framework
+
+| Component | Status | File(s) | Verification | Notes |
+|-----------|--------|---------|--------------|-------|
+| Quality scoring | 🔴 | `src/agentworld/apps/evaluation/quality.py` | `pytest tests/apps/test_quality.py` | |
+| Scenario parser | 🔴 | `src/agentworld/apps/evaluation/scenarios.py` | `pytest tests/apps/test_scenarios.py` | |
+| Scenario runner | 🔴 | `src/agentworld/apps/evaluation/scenarios.py` | `pytest tests/apps/test_scenarios.py` | |
+| Agent evaluation | 🔴 | `src/agentworld/apps/evaluation/agent_eval.py` | `pytest tests/apps/test_agent_eval.py` | |
+| Benchmark suite | 🔴 | `src/agentworld/apps/evaluation/benchmarks.py` | `pytest tests/apps/test_benchmarks.py` | |
+| Regression detection | 🔴 | `src/agentworld/apps/evaluation/regression.py` | `pytest tests/apps/test_regression.py` | |
+| Evaluation API routes | 🔴 | `src/agentworld/api/routes/evaluation.py` | `pytest tests/api/test_evaluation.py` | |
+| Benchmark app: counter | 🔴 | `data/benchmarks/bench_counter.yaml` | Loads and runs | |
+| Benchmark app: wallet | 🔴 | `data/benchmarks/bench_wallet.yaml` | Loads and runs | |
+| Benchmark app: inventory | 🔴 | `data/benchmarks/bench_inventory.yaml` | Loads and runs | |
+| Benchmark scenarios | 🔴 | `data/benchmarks/scenarios/*.yaml` | All scenarios pass | |
+
+---
+
+### Phase 10 Database Schema
+
+```sql
+-- App definitions (user-created apps)
+CREATE TABLE app_definitions (
+    id TEXT PRIMARY KEY,
+    app_id TEXT NOT NULL UNIQUE,
+    name TEXT NOT NULL,
+    description TEXT,
+    category TEXT NOT NULL,
+    icon TEXT,
+    version INTEGER DEFAULT 1,
+    definition JSON NOT NULL,
+    is_builtin INTEGER DEFAULT 0,
+    is_active INTEGER DEFAULT 1,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    created_by TEXT
+);
+
+CREATE INDEX idx_app_def_app_id ON app_definitions(app_id);
+CREATE INDEX idx_app_def_category ON app_definitions(category);
+CREATE INDEX idx_app_def_active ON app_definitions(is_active);
+
+-- App definition versions (for history)
+CREATE TABLE app_definition_versions (
+    id TEXT PRIMARY KEY,
+    app_definition_id TEXT NOT NULL REFERENCES app_definitions(id),
+    version INTEGER NOT NULL,
+    definition JSON NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(app_definition_id, version)
+);
+```
+
+---
+
+### Phase 10 Verification Checklist
+
+```markdown
+## Backend - Dynamic App Engine
+- [ ] AppDefinition dataclass can serialize/deserialize JSON
+- [ ] DynamicApp loads from database definition
+- [ ] LogicEngine executes all block types correctly
+- [ ] ExpressionEvaluator handles all expression types
+- [ ] CRUD API endpoints work (create, read, update, delete)
+- [ ] Test endpoint executes action in isolated sandbox
+- [ ] Registry returns DynamicApp for database-defined apps
+- [ ] Python apps take precedence over database apps
+
+## Schema & Logic Language
+- [ ] JSON Schema validates correct definitions
+- [ ] JSON Schema rejects invalid definitions
+- [ ] All logic block types execute correctly
+- [ ] Built-in functions return correct values
+- [ ] Expression parser handles all syntax
+- [ ] Error messages are clear and helpful
+
+## App Library UI
+- [ ] /apps page loads and shows apps
+- [ ] App Studio appears in navigation
+- [ ] Category filtering works
+- [ ] Search filtering works
+- [ ] Grid/list view toggle works
+- [ ] Quick actions (edit, duplicate, delete) work
+- [ ] Empty state shows when no apps
+
+## App Creation Wizard
+- [ ] Template selection works
+- [ ] Basic info form validates
+- [ ] Actions can be added/edited/removed
+- [ ] Test step executes actions
+- [ ] Draft persists to localStorage
+- [ ] Edit mode loads existing app
+- [ ] Save creates/updates app
+
+## Visual Logic Builder
+- [ ] Canvas renders and pans/zooms
+- [ ] Blocks can be dragged from palette
+- [ ] Blocks can be connected
+- [ ] Block configuration panel works
+- [ ] Expression editor has autocomplete
+- [ ] Validation highlights errors
+- [ ] JSON sync is bidirectional
+
+## Test Sandbox
+- [ ] Test agents are available
+- [ ] Action execution works
+- [ ] State changes are visible
+- [ ] State diff highlighting works
+- [ ] Execution log records actions
+- [ ] Reset state works
+
+## Simulation Integration
+- [ ] Apps section appears in SimulationCreate
+- [ ] App picker allows adding apps
+- [ ] App configuration modal works
+- [ ] Apps are included in simulation payload
+- [ ] Agents receive app instructions in prompt
+
+## Integration Tests
+- [ ] `pytest tests/apps/` all pass
+- [ ] `pytest tests/api/test_app_definitions.py` all pass
+- [ ] `scripts/verify_phase10.py` exits with code 0
+```
+
+---
+
 ## Appendix A: Project Structure
 
 ```
@@ -1181,6 +1428,12 @@ agentworld/
 │       │   └── serialization.py
 │       ├── agents/
 │       │   └── agent.py
+│       ├── apps/
+│       │   ├── __init__.py
+│       │   ├── base.py
+│       │   ├── manager.py
+│       │   ├── parser.py
+│       │   └── paypal.py
 │       ├── memory/
 │       │   ├── base.py
 │       │   ├── observation.py
@@ -1278,6 +1531,9 @@ agentworld/
     │   ├── test_phase1.py
     │   ├── test_phase2.py
     │   └── ...
+    ├── apps/
+    │   ├── test_paypal.py
+    │   └── test_parser.py
     ├── core/
     ├── llm/
     ├── personas/
@@ -1429,6 +1685,8 @@ if __name__ == "__main__":
 | 2026-01-16 | 7+ | Agent Infrastructure Features - ADR-016 (Agent Injection), ExportService (6 formats: JSONL/OpenAI/Anthropic/ShareGPT/Alpaca/DPO), Evaluation Framework (evaluator protocol, built-in evaluators, message_evaluations DB table), Export/Evaluation/Injection API endpoints, UI panels (ExportPanel, EvaluationPanel, AgentInjector), Circuit breaker + concurrency limits for external agents | Claude |
 | 2026-01-17 | - | Auto-tracked: ADR-009, ADR-011, ADR-012 (3 files modified) | Hook |
 | 2026-01-17 | 7+ | ADR-016 status updated to Accepted - agent injection fully implemented | Claude |
+| 2026-01-22 | 7+ | ADR-017 Simulated Apps Framework complete - SimulatedAppPlugin protocol, PayPal app (6 actions), action parser, SimulationAppManager, persistence models, API endpoints (6), WebSocket events (5), checkpoint integration, tests (PayPal unit, parser unit, integration), example config | Claude |
+| 2026-01-22 | - | Auto-tracked: ADR-008, ADR-009, ADR-011, ADR-012 (10 files modified) | Hook |
 
 ---
 
@@ -1494,6 +1752,133 @@ if __name__ == "__main__":
 | Evaluation API Methods | 🟢 | `web/src/lib/api.ts` | TypeScript check | runEvaluation, getEvaluations |
 | Injection API Methods | 🟢 | `web/src/lib/api.ts` | TypeScript check | injectAgent, getInjectionMetrics |
 | SimulationDetail Integration | 🟢 | `web/src/pages/SimulationDetail.tsx` | TypeScript check | Advanced tools section |
+
+---
+
+## Simulated Apps Framework (ADR-017)
+
+**Goal:** Enable agents to interact with simulated applications (PayPal, etc.) during simulations
+**Exit Criteria:** Agents can execute app actions, state persists, observations injected, full audit trail
+**Status:** 🟢 Complete
+**Depends On:** Phase 5 (API Layer) ✅, ADR-014 (Plugin Model) ✅
+
+### ADR-017: Simulated Application Framework
+
+| Component | Status | File(s) | Verification | Notes |
+|-----------|--------|---------|--------------|-------|
+| ADR-017 Documentation | 🟢 | `adrs/ADR-017-simulated-apps.md` | File exists | Full architecture + validation checklist |
+| SimulatedAppPlugin Protocol | 🟢 | `src/agentworld/apps/base.py` | `pytest tests/apps/` | Runtime-checkable protocol |
+| BaseSimulatedApp Class | 🟢 | `src/agentworld/apps/base.py` | `pytest tests/apps/` | Action logging, observations |
+| AppRegistry | 🟢 | `src/agentworld/apps/base.py` | `pytest tests/apps/` | Plugin discovery via entry points |
+| AppAction Dataclass | 🟢 | `src/agentworld/apps/base.py` | Import check | Action schemas with ParamSpec |
+| AppResult Dataclass | 🟢 | `src/agentworld/apps/base.py` | Import check | Success/error results |
+| AppObservation Dataclass | 🟢 | `src/agentworld/apps/base.py` | Import check | Agent notifications |
+
+### PayPal Simulated App
+
+| Component | Status | File(s) | Verification | Notes |
+|-----------|--------|---------|--------------|-------|
+| PayPalApp Implementation | 🟢 | `src/agentworld/apps/paypal.py` | `pytest tests/apps/test_paypal.py` | All 6 actions |
+| check_balance Action | 🟢 | `src/agentworld/apps/paypal.py` | `pytest tests/apps/test_paypal.py` | Returns balance + email |
+| transfer Action | 🟢 | `src/agentworld/apps/paypal.py` | `pytest tests/apps/test_paypal.py` | Validates balance, creates observation |
+| request_money Action | 🟢 | `src/agentworld/apps/paypal.py` | `pytest tests/apps/test_paypal.py` | Creates pending request |
+| pay_request Action | 🟢 | `src/agentworld/apps/paypal.py` | `pytest tests/apps/test_paypal.py` | Resolves request, transfers funds |
+| decline_request Action | 🟢 | `src/agentworld/apps/paypal.py` | `pytest tests/apps/test_paypal.py` | Cancels request |
+| view_transactions Action | 🟢 | `src/agentworld/apps/paypal.py` | `pytest tests/apps/test_paypal.py` | Transaction history |
+| State Snapshot/Restore | 🟢 | `src/agentworld/apps/paypal.py` | `pytest tests/apps/test_paypal.py` | Checkpoint support |
+| Entry Point Registration | 🟢 | `pyproject.toml` | `agentworld.apps` entry point | Plugin discovery |
+
+### Action Directive Parser
+
+| Component | Status | File(s) | Verification | Notes |
+|-----------|--------|---------|--------------|-------|
+| Action Parser | 🟢 | `src/agentworld/apps/parser.py` | `pytest tests/apps/test_parser.py` | APP_ACTION: syntax |
+| parse_message Function | 🟢 | `src/agentworld/apps/parser.py` | `pytest tests/apps/test_parser.py` | Extract actions from text |
+| parse_action_directive | 🟢 | `src/agentworld/apps/parser.py` | `pytest tests/apps/test_parser.py` | Single action parsing |
+| parse_params Function | 🟢 | `src/agentworld/apps/parser.py` | `pytest tests/apps/test_parser.py` | Parameter parsing |
+| format_action Helper | 🟢 | `src/agentworld/apps/parser.py` | `pytest tests/apps/test_parser.py` | Format for output |
+| ParsedAction Dataclass | 🟢 | `src/agentworld/apps/parser.py` | Import check | Parsed result |
+| ParseError Dataclass | 🟢 | `src/agentworld/apps/parser.py` | Import check | Error handling |
+
+### Simulation Integration
+
+| Component | Status | File(s) | Verification | Notes |
+|-----------|--------|---------|--------------|-------|
+| SimulationAppManager | 🟢 | `src/agentworld/apps/manager.py` | `pytest tests/integration/test_app_simulation.py` | Per-simulation lifecycle |
+| Runner Integration | 🟢 | `src/agentworld/simulation/runner.py` | `pytest tests/integration/test_app_simulation.py` | Apps initialized in run() |
+| PERCEIVE Phase | 🟢 | `src/agentworld/simulation/runner.py` | `pytest tests/integration/test_app_simulation.py` | Observations injected |
+| ACT Phase | 🟢 | `src/agentworld/simulation/runner.py` | `pytest tests/integration/test_app_simulation.py` | Actions parsed |
+| COMMIT Phase | 🟢 | `src/agentworld/simulation/runner.py` | `pytest tests/integration/test_app_simulation.py` | Actions executed |
+| Checkpoint Integration | 🟢 | `src/agentworld/simulation/checkpoint.py` | `pytest tests/simulation/test_checkpoint.py` | App states in SimulationState |
+
+### Persistence Layer
+
+| Component | Status | File(s) | Verification | Notes |
+|-----------|--------|---------|--------------|-------|
+| AppInstanceModel | 🟢 | `src/agentworld/persistence/models.py` | `pytest tests/persistence/` | App instances per simulation |
+| AppActionLogModel | 🟢 | `src/agentworld/persistence/models.py` | `pytest tests/persistence/` | Action audit trail |
+| Repository Methods | 🟢 | `src/agentworld/persistence/repository.py` | `pytest tests/persistence/` | CRUD for app instances |
+
+### API Layer
+
+| Component | Status | File(s) | Verification | Notes |
+|-----------|--------|---------|--------------|-------|
+| Apps API Routes | 🟢 | `src/agentworld/api/routes/apps.py` | `pytest tests/api/` | 6 endpoints |
+| GET /apps/available | 🟢 | `src/agentworld/api/routes/apps.py` | `pytest tests/api/` | List registered apps |
+| GET /simulations/{id}/apps | 🟢 | `src/agentworld/api/routes/apps.py` | `pytest tests/api/` | Active apps in simulation |
+| GET /simulations/{id}/apps/{app_id} | 🟢 | `src/agentworld/api/routes/apps.py` | `pytest tests/api/` | App state |
+| GET .../agents/{agent_id} | 🟢 | `src/agentworld/api/routes/apps.py` | `pytest tests/api/` | Agent's app state |
+| GET .../apps/{app_id}/actions | 🟢 | `src/agentworld/api/routes/apps.py` | `pytest tests/api/` | Action log |
+| App API Schemas | 🟢 | `src/agentworld/api/schemas/apps.py` | Import check | Pydantic models |
+| WebSocket App Events | 🟢 | `src/agentworld/api/websocket.py` | `pytest tests/api/` | 5 event types |
+
+### Testing
+
+| Component | Status | File(s) | Verification | Notes |
+|-----------|--------|---------|--------------|-------|
+| PayPal Unit Tests | 🟢 | `tests/apps/test_paypal.py` | `pytest tests/apps/test_paypal.py -v` | ~25 test cases |
+| Parser Unit Tests | 🟢 | `tests/apps/test_parser.py` | `pytest tests/apps/test_parser.py -v` | Value/param/directive parsing |
+| Integration Tests | 🟢 | `tests/integration/test_app_simulation.py` | `pytest tests/integration/test_app_simulation.py -v` | End-to-end scenarios |
+| Example Config | 🟢 | `examples/paypal_simulation.yaml` | `agentworld run examples/paypal_simulation.yaml` | Roommate bill splitting |
+
+### ADR-017 Verification Checklist
+
+```markdown
+## Core Framework
+- [x] SimulatedAppPlugin protocol defined
+- [x] BaseSimulatedApp with action logging
+- [x] AppRegistry discovers plugins via entry points
+- [x] AppAction schema with parameter specs
+
+## PayPal App
+- [x] All 6 actions implemented and tested
+- [x] Validation rules enforced (balance, user existence)
+- [x] Observations created for transfers/requests
+- [x] State snapshot/restore works
+
+## Parser
+- [x] APP_ACTION: syntax parsed correctly
+- [x] Multiple actions in single message
+- [x] Error handling for invalid syntax
+- [x] Round-trip format/parse works
+
+## Simulation Integration
+- [x] Apps initialized on simulation start
+- [x] Observations injected in PERCEIVE phase
+- [x] Actions parsed in ACT phase
+- [x] Actions executed in COMMIT phase
+- [x] App state included in checkpoints
+
+## Persistence
+- [x] App instances saved per simulation
+- [x] Action audit log recorded
+- [x] Repository methods work
+
+## API
+- [x] All 6 endpoints return correct data
+- [x] WebSocket events emitted for app actions
+- [x] Schemas validate properly
+```
 
 ---
 
