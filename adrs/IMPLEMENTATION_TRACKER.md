@@ -31,7 +31,12 @@
 | 7 | Real-time Web | 🟡 | 🔴 | UI-003, UI-004 | Live visualization | `scripts/verify_phase7.py` |
 | 8 | Advanced Web | 🔴 | 🔴 | UI-006, UI-007, UI-008 | Full web workflows | `scripts/verify_phase8.py` |
 | 9 | Production | 🟡 | 🟢 | 013+, 014, 015 | Security, plugins, traces | `scripts/verify_phase9.py` |
-| 10 | App Studio | 🔴 | 🔴 | 018, 019, 020, UI-009-013 | No-code app builder | `scripts/verify_phase10.py` |
+| 10a | App Studio: Backend Core | 🔴 | 🔴 | 018, 019 | Dynamic app engine + logic language | `scripts/verify_phase10a.py` |
+| 10b | App Studio: Library UI | 🔴 | 🔴 | UI-009 | Browse and manage apps | `scripts/verify_phase10b.py` |
+| 10c | App Studio: Creation Wizard | 🔴 | 🔴 | UI-010, UI-012 | Form-based app creation + sandbox | `scripts/verify_phase10c.py` |
+| 10d | App Studio: Visual Builder | 🔴 | 🔴 | UI-011 | No-code logic canvas | `scripts/verify_phase10d.py` |
+| 10e | App Studio: Sim Integration | 🔴 | 🔴 | UI-013 | Add apps to simulations | `scripts/verify_phase10e.py` |
+| 10f | App Studio: Evaluation | 🔴 | 🔴 | 020 | Quality metrics + benchmarks | `scripts/verify_phase10f.py` |
 
 > **Test Status Legend:** 🟢 All tests pass | ⚠️ Tests incomplete | 🔴 No tests
 >
@@ -1136,12 +1141,59 @@ audit_logs (id, user_id, action, resource_type, resource_id, details_json, times
 
 ---
 
-## Phase 10: App Studio
+## Phase 10: App Studio (Split into Sub-Phases)
 
-**Goal:** Enable non-developers to create simulated apps via a visual no-code builder
-**Exit Criteria:** Users can create, test, and deploy custom apps to simulations without writing code
+Phase 10 is split into 6 sub-phases to enable incremental delivery and clear milestones.
+
+```
+┌─────────────────────────────────────────────────────────────────────┐
+│                    PHASE 10 DEPENDENCY GRAPH                         │
+├─────────────────────────────────────────────────────────────────────┤
+│                                                                      │
+│   Phase 7 (ADR-017)                                                  │
+│         │                                                            │
+│         ▼                                                            │
+│   ┌─────────────┐                                                    │
+│   │ 10a: Backend│ ◄── Foundation: DynamicApp, LogicEngine, API      │
+│   │    Core     │                                                    │
+│   └──────┬──────┘                                                    │
+│          │                                                           │
+│          ▼                                                           │
+│   ┌─────────────┐                                                    │
+│   │ 10b: Library│ ◄── Browse apps at /apps                          │
+│   │     UI      │                                                    │
+│   └──────┬──────┘                                                    │
+│          │                                                           │
+│          ▼                                                           │
+│   ┌─────────────┐    ┌─────────────┐                                │
+│   │10c: Wizard +│    │ 10f: Eval   │ ◄── Can run in parallel        │
+│   │   Sandbox   │    │  Framework  │                                 │
+│   └──────┬──────┘    └─────────────┘                                │
+│          │                                                           │
+│          ▼                                                           │
+│   ┌─────────────┐                                                    │
+│   │10d: Visual  │ ◄── Most complex UI, optional for MVP             │
+│   │   Builder   │                                                    │
+│   └──────┬──────┘                                                    │
+│          │                                                           │
+│          ▼                                                           │
+│   ┌─────────────┐                                                    │
+│   │ 10e: Sim    │ ◄── Final integration point                       │
+│   │ Integration │                                                    │
+│   └─────────────┘                                                    │
+│                                                                      │
+└─────────────────────────────────────────────────────────────────────┘
+```
+
+---
+
+## Phase 10a: Backend Core
+
+**Goal:** Build the dynamic app engine that loads app definitions from JSON/database
+**Exit Criteria:** DynamicApp can execute actions defined in JSON, CRUD API works
 **Status:** 🔴 Not Started
-**Depends On:** Phase 7 (ADR-017 Simulated Apps), Phase 6 (Web Foundation)
+**Depends On:** Phase 7 (ADR-017 Simulated Apps)
+**ADRs:** ADR-018, ADR-019
 
 ### ADR-018: App Studio Backend - Dynamic App Engine
 
@@ -1173,6 +1225,31 @@ audit_logs (id, user_id, action, resource_type, resource_id, details_json, times
 | Expression parser | 🔴 | `src/agentworld/apps/expression.py` | `pytest tests/apps/test_expression.py` | |
 | Built-in functions | 🔴 | `src/agentworld/apps/expression.py` | `pytest tests/apps/test_expression.py` | generate_id, timestamp, etc. |
 
+### Phase 10a Exit Criteria
+
+```markdown
+- [ ] AppDefinition dataclass serializes/deserializes JSON correctly
+- [ ] DynamicApp loads from JSON definition and executes actions
+- [ ] LogicEngine executes all 7 block types (VALIDATE, UPDATE, NOTIFY, RETURN, ERROR, BRANCH, LOOP)
+- [ ] ExpressionEvaluator handles all expression types with correct precedence
+- [ ] Database migration creates app_definitions and app_definition_versions tables
+- [ ] CRUD API endpoints work (GET /app-definitions, POST, PATCH, DELETE)
+- [ ] Test endpoint executes action in stateless sandbox
+- [ ] Registry returns DynamicApp for database-defined apps (Python apps take precedence)
+- [ ] `pytest tests/apps/` all pass
+- [ ] `pytest tests/api/test_app_definitions.py` all pass
+```
+
+---
+
+## Phase 10b: App Library UI
+
+**Goal:** Web UI to browse, search, and manage app definitions
+**Exit Criteria:** /apps page shows all apps with filtering, search, and quick actions
+**Status:** 🔴 Not Started
+**Depends On:** Phase 10a (Backend Core)
+**ADRs:** UI-ADR-009
+
 ### UI-ADR-009: App Studio Library & Navigation
 
 | Component | Status | File(s) | Verification | Notes |
@@ -1186,6 +1263,30 @@ audit_logs (id, user_id, action, resource_type, resource_id, details_json, times
 | Empty state | 🔴 | `web/src/components/app-studio/AppEmptyState.tsx` | Shows when no apps | |
 | API client | 🔴 | `web/src/lib/api/app-definitions.ts` | API calls work | |
 | TypeScript types | 🔴 | `web/src/lib/types/apps.ts` | Types compile | |
+
+### Phase 10b Exit Criteria
+
+```markdown
+- [ ] /apps page loads and renders
+- [ ] App Studio appears in main navigation
+- [ ] App cards display name, icon, category, action count
+- [ ] Category tabs filter apps correctly
+- [ ] Search filters by name and description
+- [ ] Grid/list view toggle works
+- [ ] Quick actions (view, edit, duplicate, delete) function
+- [ ] Empty state appears when no apps exist
+- [ ] Pagination works for >10 apps
+```
+
+---
+
+## Phase 10c: App Creation Wizard + Sandbox
+
+**Goal:** Form-based wizard to create apps + test sandbox to verify behavior
+**Exit Criteria:** Users can create new apps via wizard and test actions before saving
+**Status:** 🔴 Not Started
+**Depends On:** Phase 10b (Library UI)
+**ADRs:** UI-ADR-010, UI-ADR-012
 
 ### UI-ADR-010: App Creation Wizard
 
@@ -1203,6 +1304,42 @@ audit_logs (id, user_id, action, resource_type, resource_id, details_json, times
 | ParameterEditor | 🔴 | `web/src/components/app-studio/ParameterEditor.tsx` | Parameter form | |
 | Templates data | 🔴 | `web/src/lib/templates/index.ts` | Template definitions | |
 | Draft persistence | 🔴 | `web/src/components/app-studio/AppWizard.tsx` | LocalStorage draft | |
+
+### Phase 10c Exit Criteria
+
+```markdown
+## Wizard
+- [ ] /apps/new page loads wizard
+- [ ] Template selection step shows 6 templates
+- [ ] Basic info step validates name, app_id, category
+- [ ] Actions step allows add/edit/remove actions
+- [ ] Action builder modal works for all parameter types
+- [ ] Test step integrates sandbox component
+- [ ] Draft persists to localStorage
+- [ ] Edit mode (/apps/:id) loads existing app
+- [ ] Save creates app via API
+
+## Sandbox
+- [ ] Test agents (Alice, Bob, Charlie) available
+- [ ] Action execution works against /test endpoint
+- [ ] State changes visible in state viewer
+- [ ] State diff highlights changes
+- [ ] Execution log records all actions
+- [ ] Reset state button works
+```
+
+---
+
+## Phase 10d: Visual Logic Builder
+
+**Goal:** No-code flowchart canvas for defining action business logic
+**Exit Criteria:** Users can build action logic visually without writing JSON
+**Status:** 🔴 Not Started
+**Depends On:** Phase 10c (Wizard + Sandbox)
+**ADRs:** UI-ADR-011
+
+> **Note:** This phase is the most complex UI feature. MVP can be achieved with 10a-10c + 10e
+> using JSON-based logic definition. The visual builder is an enhancement.
 
 ### UI-ADR-011: Visual Logic Builder
 
@@ -1226,7 +1363,24 @@ audit_logs (id, user_id, action, resource_type, resource_id, details_json, times
 | useLogicBuilder hook | 🔴 | `web/src/components/app-studio/logic-builder/hooks/useLogicBuilder.ts` | State hook | |
 | useAutoLayout hook | 🔴 | `web/src/components/app-studio/logic-builder/hooks/useAutoLayout.ts` | Layout hook | |
 
-### UI-ADR-012: App Test Sandbox
+### Phase 10d Exit Criteria
+
+```markdown
+- [ ] Canvas renders with pan/zoom controls
+- [ ] All 7 block types can be dragged from palette
+- [ ] Blocks can be connected with lines
+- [ ] Connections follow DAG rules (no cycles)
+- [ ] Block configuration panel shows on selection
+- [ ] Expression editor has autocomplete
+- [ ] Validation highlights errors (missing connections, invalid expressions)
+- [ ] JSON view shows synced logic
+- [ ] Changes in JSON reflect in visual
+- [ ] React Flow pinned to 12.3.x
+```
+
+---
+
+### UI-ADR-012: App Test Sandbox (included in Phase 10c)
 
 | Component | Status | File(s) | Verification | Notes |
 |-----------|--------|---------|--------------|-------|
@@ -1243,6 +1397,16 @@ audit_logs (id, user_id, action, resource_type, resource_id, details_json, times
 | useSandbox hook | 🔴 | `web/src/components/app-studio/sandbox/hooks/useSandbox.ts` | State hook | |
 | useStateDiff hook | 🔴 | `web/src/components/app-studio/sandbox/hooks/useStateDiff.ts` | Diff hook | |
 
+---
+
+## Phase 10e: Simulation Integration
+
+**Goal:** Allow users to add apps to simulations via the web UI
+**Exit Criteria:** Apps can be selected, configured, and included in simulation runs
+**Status:** 🔴 Not Started
+**Depends On:** Phase 10a (Backend Core), Phase 10b (Library UI)
+**ADRs:** UI-ADR-013
+
 ### UI-ADR-013: Simulation App Integration
 
 | Component | Status | File(s) | Verification | Notes |
@@ -1255,6 +1419,33 @@ audit_logs (id, user_id, action, resource_type, resource_id, details_json, times
 | SimulationCreate update | 🔴 | `web/src/pages/SimulationCreate.tsx` | Apps section added | |
 | API payload update | 🔴 | `web/src/lib/api/simulations.ts` | Apps in payload | |
 | Backend schema update | 🔴 | `src/agentworld/api/schemas/simulations.py` | Apps field added | |
+
+### Phase 10e Exit Criteria
+
+```markdown
+- [ ] Apps section appears in SimulationCreate page
+- [ ] App picker modal lists available apps
+- [ ] Adding app creates config card
+- [ ] App configuration modal shows app-specific fields
+- [ ] Remove app (with undo toast) works
+- [ ] Multiple apps can be added
+- [ ] Apps included in simulation creation payload
+- [ ] Backend accepts apps array in POST /simulations
+- [ ] Agents receive app instructions in system prompt
+```
+
+---
+
+## Phase 10f: Evaluation Framework
+
+**Goal:** Quality metrics, benchmarks, and regression testing for apps
+**Exit Criteria:** Apps can be scored, tested with scenarios, and compared between versions
+**Status:** 🔴 Not Started
+**Depends On:** Phase 10a (Backend Core)
+**ADRs:** ADR-020
+
+> **Note:** This phase can run in parallel with 10c-10e. It provides tooling for
+> app quality assurance but is not required for basic app creation workflows.
 
 ### ADR-020: App Benchmark & Evaluation Framework
 
@@ -1271,6 +1462,22 @@ audit_logs (id, user_id, action, resource_type, resource_id, details_json, times
 | Benchmark app: wallet | 🔴 | `data/benchmarks/bench_wallet.yaml` | Loads and runs | |
 | Benchmark app: inventory | 🔴 | `data/benchmarks/bench_inventory.yaml` | Loads and runs | |
 | Benchmark scenarios | 🔴 | `data/benchmarks/scenarios/*.yaml` | All scenarios pass | |
+
+### Phase 10f Exit Criteria
+
+```markdown
+- [ ] Quality scoring returns scores for all 6 dimensions
+- [ ] Suggestions generated for low-scoring apps
+- [ ] Scenario parser loads YAML scenarios
+- [ ] Scenario runner executes all steps
+- [ ] Assertions verified at end of scenario
+- [ ] Agent evaluation tracks success rate and efficiency
+- [ ] Benchmark apps (counter, wallet, inventory) all pass
+- [ ] Regression detection identifies breaking changes
+- [ ] Evaluation API endpoints work
+- [ ] `pytest tests/apps/test_quality.py` all pass
+- [ ] `pytest tests/apps/test_scenarios.py` all pass
+```
 
 ---
 
@@ -1311,74 +1518,50 @@ CREATE TABLE app_definition_versions (
 
 ---
 
-### Phase 10 Verification Checklist
+### Phase 10 Verification Scripts
 
-```markdown
-## Backend - Dynamic App Engine
-- [ ] AppDefinition dataclass can serialize/deserialize JSON
-- [ ] DynamicApp loads from database definition
-- [ ] LogicEngine executes all block types correctly
-- [ ] ExpressionEvaluator handles all expression types
-- [ ] CRUD API endpoints work (create, read, update, delete)
-- [ ] Test endpoint executes action in isolated sandbox
-- [ ] Registry returns DynamicApp for database-defined apps
-- [ ] Python apps take precedence over database apps
+Each sub-phase has its own verification script for incremental delivery:
 
-## Schema & Logic Language
-- [ ] JSON Schema validates correct definitions
-- [ ] JSON Schema rejects invalid definitions
-- [ ] All logic block types execute correctly
-- [ ] Built-in functions return correct values
-- [ ] Expression parser handles all syntax
-- [ ] Error messages are clear and helpful
+| Phase | Script | Tests |
+|-------|--------|-------|
+| 10a | `scripts/verify_phase10a.py` | Backend + API |
+| 10b | `scripts/verify_phase10b.py` | Library UI |
+| 10c | `scripts/verify_phase10c.py` | Wizard + Sandbox |
+| 10d | `scripts/verify_phase10d.py` | Visual Builder |
+| 10e | `scripts/verify_phase10e.py` | Sim Integration |
+| 10f | `scripts/verify_phase10f.py` | Evaluation |
 
-## App Library UI
-- [ ] /apps page loads and shows apps
-- [ ] App Studio appears in navigation
-- [ ] Category filtering works
-- [ ] Search filtering works
-- [ ] Grid/list view toggle works
-- [ ] Quick actions (edit, duplicate, delete) work
-- [ ] Empty state shows when no apps
+**Full Phase 10 Verification:**
 
-## App Creation Wizard
-- [ ] Template selection works
-- [ ] Basic info form validates
-- [ ] Actions can be added/edited/removed
-- [ ] Test step executes actions
-- [ ] Draft persists to localStorage
-- [ ] Edit mode loads existing app
-- [ ] Save creates/updates app
+```bash
+# Run all Phase 10 verifications
+python scripts/verify_phase10a.py && \
+python scripts/verify_phase10b.py && \
+python scripts/verify_phase10c.py && \
+python scripts/verify_phase10d.py && \
+python scripts/verify_phase10e.py && \
+python scripts/verify_phase10f.py
 
-## Visual Logic Builder
-- [ ] Canvas renders and pans/zooms
-- [ ] Blocks can be dragged from palette
-- [ ] Blocks can be connected
-- [ ] Block configuration panel works
-- [ ] Expression editor has autocomplete
-- [ ] Validation highlights errors
-- [ ] JSON sync is bidirectional
-
-## Test Sandbox
-- [ ] Test agents are available
-- [ ] Action execution works
-- [ ] State changes are visible
-- [ ] State diff highlighting works
-- [ ] Execution log records actions
-- [ ] Reset state works
-
-## Simulation Integration
-- [ ] Apps section appears in SimulationCreate
-- [ ] App picker allows adding apps
-- [ ] App configuration modal works
-- [ ] Apps are included in simulation payload
-- [ ] Agents receive app instructions in prompt
-
-## Integration Tests
-- [ ] `pytest tests/apps/` all pass
-- [ ] `pytest tests/api/test_app_definitions.py` all pass
-- [ ] `scripts/verify_phase10.py` exits with code 0
+# Or run pytest for all app-related tests
+pytest tests/apps/ tests/api/test_app_definitions.py tests/api/test_evaluation.py -v
 ```
+
+### Phase 10 MVP Path
+
+For fastest time-to-value, implement in this order:
+
+```
+10a (Backend Core) → 10b (Library UI) → 10c (Wizard + Sandbox) → 10e (Sim Integration)
+```
+
+This delivers:
+- Create apps via form-based wizard
+- Test apps in sandbox
+- Use apps in simulations
+
+**Deferred for enhancement:**
+- 10d (Visual Logic Builder) - JSON editing works without it
+- 10f (Evaluation Framework) - Nice-to-have for quality assurance
 
 ---
 
