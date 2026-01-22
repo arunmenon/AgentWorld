@@ -103,3 +103,7 @@ csv = "agentworld.plugins.builtin:CSVOutputFormat"
 
 [project.entry-points."agentworld.llm_providers"]
 # LLM provider plugins
+
+[project.entry-points."agentworld.apps"]
+# Simulated app plugins (per ADR-017)
+paypal = "agentworld.apps.paypal:PayPalApp"

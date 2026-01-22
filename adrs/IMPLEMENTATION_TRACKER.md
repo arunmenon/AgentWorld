@@ -1870,6 +1870,7 @@ if __name__ == "__main__":
 | 2026-01-17 | 7+ | ADR-016 status updated to Accepted - agent injection fully implemented | Claude |
 | 2026-01-22 | 7+ | ADR-017 Simulated Apps Framework complete - SimulatedAppPlugin protocol, PayPal app (6 actions), action parser, SimulationAppManager, persistence models, API endpoints (6), WebSocket events (5), checkpoint integration, tests (PayPal unit, parser unit, integration), example config | Claude |
 | 2026-01-22 | - | Auto-tracked: ADR-008, ADR-009, ADR-011, ADR-012 (10 files modified) | Hook |
+| 2026-01-23 | - | Auto-tracked: ADR-008, ADR-012 (6 files modified) | Hook |
 
 ---
 

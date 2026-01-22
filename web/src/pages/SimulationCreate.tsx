@@ -32,6 +32,7 @@ import {
 import { cn } from '@/lib/utils'
 import { api } from '@/lib/api'
 import { templates, type SimulationTemplate } from '@/lib/templates'
+import { AppsSection, type SimulationAppConfig } from '@/components/simulation/apps'
 
 const iconMap: Record<string, React.ElementType> = {
   'building-2': Building2,
@@ -122,6 +123,7 @@ export default function SimulationCreate() {
   const [errors, setErrors] = useState<ValidationErrors>({})
   const [touched, setTouched] = useState<Record<string, boolean>>({})
   const [showPersonaPicker, setShowPersonaPicker] = useState(false)
+  const [apps, setApps] = useState<SimulationAppConfig[]>([])
   const [selectedTemplate, setSelectedTemplate] = useState<string | null>(null)
   const [showTemplates, setShowTemplates] = useState(true)
 
@@ -151,6 +153,7 @@ export default function SimulationCreate() {
       { ...defaultAgent, name: 'Alice' },
       { ...defaultAgent, name: 'Bob' },
     ])
+    setApps([])
     setSelectedTemplate(null)
     setShowTemplates(true)
     setErrors({})
@@ -269,6 +272,10 @@ export default function SimulationCreate() {
         background: a.background,
         traits: a.traits,
       })),
+      apps: apps.length > 0 ? apps.map((a) => ({
+        app_id: a.app_id,
+        config: a.config,
+      })) : undefined,
     })
   }
 
@@ -566,6 +573,9 @@ export default function SimulationCreate() {
             ))}
           </CardContent>
         </Card>
+
+        {/* Apps Section */}
+        <AppsSection apps={apps} onChange={setApps} />
 
         {/* Submit */}
         <div className="flex justify-end gap-4">

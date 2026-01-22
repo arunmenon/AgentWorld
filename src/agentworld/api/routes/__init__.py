@@ -1,5 +1,23 @@
 """API routes package."""
 
-from agentworld.api.routes import simulations, agents, messages, personas, health, evaluation, export
+from agentworld.api.routes import (
+    simulations,
+    agents,
+    messages,
+    personas,
+    health,
+    evaluation,
+    export,
+    app_definitions,
+)
 
-__all__ = ["simulations", "agents", "messages", "personas", "health", "evaluation", "export"]
+__all__ = [
+    "simulations",
+    "agents",
+    "messages",
+    "personas",
+    "health",
+    "evaluation",
+    "export",
+    "app_definitions",
+]

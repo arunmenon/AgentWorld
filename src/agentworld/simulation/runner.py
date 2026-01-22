@@ -23,6 +23,7 @@ from agentworld.simulation.control import (
 )
 from agentworld.plugins.hooks import PluginHooks
 from agentworld.api.events import SimulationEventEmitter
+from agentworld.apps.manager import SimulationAppManager
 
 if TYPE_CHECKING:
     from agentworld.agents.external import InjectedAgentManager
@@ -65,6 +66,7 @@ class Simulation:
     _topology_graph: TopologyGraph | None = field(default=None, repr=False)
     _emitter: SimulationEventEmitter | None = field(default=None, repr=False)
     _injection_manager: "InjectedAgentManager | None" = field(default=None, repr=False)
+    _app_manager: SimulationAppManager | None = field(default=None, repr=False)
 
     @classmethod
     def from_config(cls, config: SimulationConfig) -> "Simulation":
@@ -148,6 +150,36 @@ class Simulation:
     def injection_manager(self, value: "InjectedAgentManager") -> None:
         """Set the injection manager."""
         self._injection_manager = value
+
+    @property
+    def app_manager(self) -> SimulationAppManager | None:
+        """Get the app manager for simulated apps."""
+        return self._app_manager
+
+    async def initialize_apps(self, app_configs: list[dict[str, Any]] | None = None) -> None:
+        """Initialize simulated apps for this simulation.
+
+        Args:
+            app_configs: Optional list of app configurations.
+                         If not provided, uses config.apps if available.
+        """
+        # Get app configs from simulation config if not provided
+        if app_configs is None and self.config is not None:
+            config_dict = self.config.to_dict() if hasattr(self.config, 'to_dict') else {}
+            app_configs = config_dict.get("apps", [])
+
+        if not app_configs:
+            return
+
+        # Create app manager
+        self._app_manager = SimulationAppManager(simulation_id=self.id)
+        self._app_manager.set_repository(self.repository)
+
+        # Initialize apps
+        agent_ids = [agent.id for agent in self.agents]
+        await self._app_manager.initialize_apps(app_configs, agent_ids)
+
+        logger.info(f"Initialized {len(self._app_manager.get_app_ids())} apps for simulation {self.id}")
 
     def _initialize_topology(self) -> None:
         """Initialize topology based on configuration."""
@@ -392,8 +424,42 @@ class Simulation:
             step=step,
         )
 
+    async def _build_context_with_apps(self, for_agent: Agent, recent_count: int = 5) -> str:
+        """Build context string for an agent, including app observations.
+
+        Args:
+            for_agent: Agent to build context for
+            recent_count: Number of recent messages to include
+
+        Returns:
+            Context string with app observations
+        """
+        lines = []
+
+        # Add app observations if app manager exists
+        if self._app_manager is not None:
+            observations = await self._app_manager.get_agent_observations(for_agent.id)
+            if observations:
+                obs_text = self._app_manager.format_observations_for_context(observations)
+                lines.append(obs_text)
+
+        # Add topic
+        if self.initial_prompt:
+            lines.append(f"Topic: {self.initial_prompt}\n")
+
+        # Add recent conversation
+        recent = self._messages[-recent_count:] if self._messages else []
+        if recent:
+            lines.append("Recent conversation:")
+            for msg in recent:
+                sender = self.get_agent(msg.sender_id)
+                sender_name = sender.name if sender else msg.sender_id
+                lines.append(f"  {sender_name}: {msg.content}")
+
+        return "\n".join(lines) if lines else self.initial_prompt
+
     def _build_context(self, for_agent: Agent, recent_count: int = 5) -> str:
-        """Build context string for an agent.
+        """Build context string for an agent (sync version).
 
         Args:
             for_agent: Agent to build context for
@@ -460,6 +526,10 @@ class Simulation:
         # Plugin hook: step start (per ADR-014)
         PluginHooks.on_step_start(self.current_step, self)
 
+        # Update app manager step
+        if self._app_manager is not None:
+            self._app_manager.set_current_step(self.current_step)
+
         if use_three_phase:
             # Three-phase execution per ADR-011
             step_messages = await self._step_three_phase()
@@ -508,8 +578,11 @@ class Simulation:
         step_messages: list[Message] = []
 
         for i, agent in enumerate(self.agents):
-            # Build context
-            context = self._build_context(agent)
+            # Build context (with app observations if available)
+            if self._app_manager is not None:
+                context = await self._build_context_with_apps(agent)
+            else:
+                context = self._build_context(agent)
 
             # Determine receiver based on topology
             valid_recipients = self.get_valid_recipients(agent.id)
@@ -538,6 +611,28 @@ class Simulation:
                 receiver_id=receiver_id,
                 step=self.current_step,
             )
+
+            # Process app actions in message (per ADR-017)
+            if self._app_manager is not None:
+                cleaned_content, execution_results = await self._app_manager.process_message(
+                    agent.id, message.content
+                )
+                # Update message content if actions were extracted
+                if execution_results:
+                    # Keep the cleaned message content (without action directives)
+                    message.content = cleaned_content
+                    # Log action results
+                    for result in execution_results:
+                        if result.result.success:
+                            logger.info(
+                                f"App action {result.action.app_id}.{result.action.action} "
+                                f"succeeded for {agent.name}"
+                            )
+                        else:
+                            logger.warning(
+                                f"App action {result.action.app_id}.{result.action.action} "
+                                f"failed for {agent.name}: {result.result.error}"
+                            )
 
             # Emit agent responded event
             self.emitter.agent_responded(agent.id, agent.name, message.content)
@@ -589,7 +684,11 @@ class Simulation:
 
         async def perceive_for_agent(agent: Agent) -> dict:
             """Gather perception data for an agent."""
-            context = self._build_context(agent)
+            # Use async context builder if app manager is available
+            if self._app_manager is not None:
+                context = await self._build_context_with_apps(agent)
+            else:
+                context = self._build_context(agent)
             valid_recipients = self.get_valid_recipients(agent.id)
             recent_msgs = self._messages[-10:] if self._messages else []
             return {
@@ -654,6 +753,27 @@ class Simulation:
         # Apply all actions atomically
         async def commit_message(agent_id: str, message: Message) -> Message:
             """Commit a message to the simulation state."""
+            # Process app actions in message (per ADR-017)
+            if self._app_manager is not None:
+                cleaned_content, execution_results = await self._app_manager.process_message(
+                    agent_id, message.content
+                )
+                # Update message content if actions were extracted
+                if execution_results:
+                    message.content = cleaned_content
+                    # Log action results
+                    for exec_result in execution_results:
+                        if exec_result.result.success:
+                            logger.info(
+                                f"App action {exec_result.action.app_id}.{exec_result.action.action} "
+                                f"succeeded for agent {agent_id}"
+                            )
+                        else:
+                            logger.warning(
+                                f"App action {exec_result.action.app_id}.{exec_result.action.action} "
+                                f"failed for agent {agent_id}: {exec_result.result.error}"
+                            )
+
             self._messages.append(message)
             self._save_message(message)
             return message
@@ -711,6 +831,10 @@ class Simulation:
 
         all_messages: list[Message] = []
 
+        # Initialize apps if not already done (per ADR-017)
+        if self._app_manager is None and self.config is not None:
+            await self.initialize_apps()
+
         # Plugin hook: simulation start (per ADR-014)
         PluginHooks.on_simulation_start(self)
 
@@ -744,6 +868,14 @@ class Simulation:
                 "is_connected": metrics.is_connected,
             }
 
+        # Get app info if available (per ADR-017)
+        apps_info = None
+        if self._app_manager is not None:
+            apps_info = {
+                "active_apps": self._app_manager.get_app_ids(),
+                "states": self._app_manager.get_all_states(),
+            }
+
         return {
             "id": self.id,
             "name": self.name,
@@ -755,6 +887,7 @@ class Simulation:
             "agents": [a.to_dict() for a in self.agents],
             "message_count": len(self._messages),
             "topology": topology_info,
+            "apps": apps_info,
         }
 
     def __repr__(self) -> str:

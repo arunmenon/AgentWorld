@@ -71,6 +71,8 @@ class SimulationState:
     topology_edges: list[tuple[str, str, float]]
     agent_memories: dict[str, list[dict[str, Any]]]  # agent_id -> memories
     metadata: dict[str, Any] = field(default_factory=dict)
+    # App state snapshots per ADR-017 (app_id -> serialized state bytes as base64)
+    app_states: dict[str, str] = field(default_factory=dict)
 
     def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary for serialization."""
@@ -86,6 +88,7 @@ class SimulationState:
             "topology_edges": self.topology_edges,
             "agent_memories": self.agent_memories,
             "metadata": self.metadata,
+            "app_states": self.app_states,
         }
 
     @classmethod
@@ -103,6 +106,7 @@ class SimulationState:
             topology_edges=data.get("topology_edges", []),
             agent_memories=data.get("agent_memories", {}),
             metadata=data.get("metadata", {}),
+            app_states=data.get("app_states", {}),
         )
 
 
@@ -326,6 +330,8 @@ def capture_simulation_state(simulation: Any) -> SimulationState:
     Returns:
         SimulationState snapshot
     """
+    import base64
+
     # Extract agent data with memories
     agents = []
     agent_memories: dict[str, list[dict]] = {}
@@ -365,6 +371,14 @@ def capture_simulation_state(simulation: Any) -> SimulationState:
         for source, target, data in simulation._topology.graph.edges(data=True):
             topology_edges.append((source, target, data.get("weight", 1.0)))
 
+    # Extract app states (per ADR-017)
+    app_states: dict[str, str] = {}
+    if simulation._app_manager is not None:
+        snapshots = simulation._app_manager.get_state_snapshots()
+        for app_id, snapshot_bytes in snapshots.items():
+            # Encode bytes as base64 for JSON serialization
+            app_states[app_id] = base64.b64encode(snapshot_bytes).decode("utf-8")
+
     return SimulationState(
         simulation_id=simulation.id,
         step=simulation.current_step,
@@ -376,4 +390,5 @@ def capture_simulation_state(simulation: Any) -> SimulationState:
         topology_type=simulation.topology_type,
         topology_edges=topology_edges,
         agent_memories=agent_memories,
+        app_states=app_states,
     )

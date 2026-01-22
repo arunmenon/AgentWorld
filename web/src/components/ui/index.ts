@@ -7,3 +7,10 @@ export { Tooltip, type TooltipProps } from './Tooltip'
 export { ToastContainer, toast, useToastStore } from './Toast'
 export { ConfirmDialog, confirm, useConfirmDialogStore } from './ConfirmDialog'
 export { Skeleton, SkeletonCard, SkeletonListItem, SkeletonText } from './Skeleton'
+export {
+  DropdownMenu,
+  DropdownMenuTrigger,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+} from './DropdownMenu'

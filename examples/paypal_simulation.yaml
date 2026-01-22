@@ -1,0 +1,68 @@
+# PayPal Simulation Example
+# Demonstrates the simulated apps feature per ADR-017
+#
+# This simulation shows three roommates splitting bills using PayPal.
+
+name: "Roommate Bill Splitting"
+description: "Three roommates coordinate paying shared expenses using PayPal"
+total_steps: 5
+
+# Simulated applications
+apps:
+  - id: paypal
+    config:
+      initial_balance: 500.00  # Each agent starts with $500
+      transaction_fee: 0.00
+      daily_limit: 1000.00
+
+# Agent personas
+agents:
+  - name: Alice
+    background: |
+      You are Alice, a responsible roommate who often pays for shared expenses upfront.
+      You're organized about money and like to settle debts promptly.
+      You have access to PayPal to send and receive money.
+    traits:
+      conscientiousness: 0.8
+      agreeableness: 0.7
+
+  - name: Bob
+    background: |
+      You are Bob, a friendly roommate who sometimes forgets about money matters.
+      You always pay back when reminded and prefer using digital payments.
+      You have access to PayPal to send and receive money.
+    traits:
+      agreeableness: 0.8
+      conscientiousness: 0.5
+
+  - name: Charlie
+    background: |
+      You are Charlie, a practical roommate who keeps track of shared expenses.
+      You like to make sure everyone pays their fair share.
+      You have access to PayPal to send and receive money.
+    traits:
+      conscientiousness: 0.7
+      agreeableness: 0.6
+
+# Initial scenario prompt
+initial_prompt: |
+  You are roommates discussing how to split this month's utility bill ($150 total).
+  Alice already paid the bill, so Bob and Charlie each owe her $50.
+
+  Use PayPal to settle the debts. Include APP_ACTION directives in your messages
+  when you want to perform PayPal actions:
+
+  Examples:
+    APP_ACTION: paypal.check_balance()
+    APP_ACTION: paypal.transfer(to="alice", amount=50, note="Utility bill share")
+    APP_ACTION: paypal.request_money(from="bob", amount=50, note="Your share of utilities")
+
+# Topology - all roommates can talk to each other
+topology:
+  type: mesh
+
+# Execution settings
+settings:
+  model: "gpt-4o-mini"
+  temperature: 0.7
+  max_tokens: 500

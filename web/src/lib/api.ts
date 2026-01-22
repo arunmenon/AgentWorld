@@ -97,6 +97,118 @@ export interface Collection {
   updated_at: string | null
 }
 
+// App Definition Types
+export type AppCategory = 'payment' | 'shopping' | 'communication' | 'calendar' | 'social' | 'custom'
+
+export interface ParamSpec {
+  type: 'string' | 'number' | 'boolean' | 'array' | 'object'
+  description?: string
+  required?: boolean
+  default?: unknown
+  min_value?: number
+  max_value?: number
+  min_length?: number
+  max_length?: number
+  pattern?: string
+  enum?: unknown[]
+}
+
+export interface LogicBlock {
+  type: 'validate' | 'update' | 'notify' | 'return' | 'error' | 'branch' | 'loop'
+  condition?: string
+  error_message?: string
+  target?: string
+  operation?: 'set' | 'add' | 'subtract' | 'append' | 'remove'
+  value?: unknown
+  to?: string
+  message?: string
+  data?: Record<string, unknown>
+  then?: LogicBlock[]
+  else?: LogicBlock[]
+  collection?: string
+  item?: string
+  body?: LogicBlock[]
+}
+
+export interface ActionDefinition {
+  name: string
+  description: string
+  parameters?: Record<string, ParamSpec>
+  returns?: Record<string, string>
+  logic: LogicBlock[]
+}
+
+export interface StateField {
+  name: string
+  type: 'string' | 'number' | 'boolean' | 'array' | 'object'
+  default?: unknown
+  per_agent?: boolean
+  description?: string
+}
+
+export interface AppDefinition {
+  id: string
+  app_id: string
+  name: string
+  description: string | null
+  category: AppCategory
+  icon: string | null
+  version: number
+  actions: ActionDefinition[]
+  state_schema: StateField[]
+  initial_config: Record<string, unknown>
+  is_builtin: boolean
+  is_active: boolean
+  created_at: string
+  updated_at: string | null
+}
+
+export interface AppDefinitionCreate {
+  app_id: string
+  name: string
+  description?: string
+  category: AppCategory
+  icon?: string
+  actions: ActionDefinition[]
+  state_schema?: StateField[]
+  initial_config?: Record<string, unknown>
+}
+
+export interface AppDefinitionUpdate {
+  name?: string
+  description?: string
+  category?: AppCategory
+  icon?: string
+  actions?: ActionDefinition[]
+  state_schema?: StateField[]
+  initial_config?: Record<string, unknown>
+}
+
+export interface TestActionRequest {
+  action: string
+  agent_id: string
+  params: Record<string, unknown>
+  state: {
+    per_agent: Record<string, Record<string, unknown>>
+    shared: Record<string, unknown>
+  }
+}
+
+export interface TestActionResponse {
+  success: boolean
+  data?: Record<string, unknown>
+  error?: string
+  state_after: {
+    per_agent: Record<string, Record<string, unknown>>
+    shared: Record<string, unknown>
+  }
+  observations: Array<{
+    to: string
+    message: string
+    data?: Record<string, unknown>
+  }>
+}
+
 // API Functions
 export const api = {
   // Simulations
@@ -124,6 +236,10 @@ export const api = {
       background?: string
       traits?: Record<string, number>
       model?: string
+    }>
+    apps?: Array<{
+      app_id: string
+      config?: Record<string, unknown>
     }>
   }) => {
     return request<Simulation>('/simulations', { method: 'POST', body: data })
@@ -533,5 +649,47 @@ export const api = {
     }>(`/simulations/${simulationId}/inject-agent/${agentId}/health-check`, {
       method: 'POST',
     })
+  },
+
+  // App Definitions
+  getAppDefinitions: async (params?: {
+    category?: AppCategory
+    search?: string
+    page?: number
+    per_page?: number
+  }) => {
+    const searchParams = new URLSearchParams()
+    if (params?.category) searchParams.set('category', params.category)
+    if (params?.search) searchParams.set('search', params.search)
+    if (params?.page) searchParams.set('page', params.page.toString())
+    if (params?.per_page) searchParams.set('per_page', params.per_page.toString())
+    const query = searchParams.toString()
+    return request<{ definitions: AppDefinition[]; total: number }>(
+      `/app-definitions${query ? `?${query}` : ''}`
+    )
+  },
+
+  getAppDefinition: async (id: string) => {
+    return request<AppDefinition>(`/app-definitions/${id}`)
+  },
+
+  createAppDefinition: async (data: AppDefinitionCreate) => {
+    return request<AppDefinition>('/app-definitions', { method: 'POST', body: data })
+  },
+
+  updateAppDefinition: async (id: string, data: AppDefinitionUpdate) => {
+    return request<AppDefinition>(`/app-definitions/${id}`, { method: 'PATCH', body: data })
+  },
+
+  deleteAppDefinition: async (id: string) => {
+    return request<{ success: boolean }>(`/app-definitions/${id}`, { method: 'DELETE' })
+  },
+
+  duplicateAppDefinition: async (id: string, data: { new_app_id: string; new_name: string }) => {
+    return request<AppDefinition>(`/app-definitions/${id}/duplicate`, { method: 'POST', body: data })
+  },
+
+  testAppDefinition: async (id: string, data: TestActionRequest) => {
+    return request<TestActionResponse>(`/app-definitions/${id}/test`, { method: 'POST', body: data })
   },
 }

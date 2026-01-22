@@ -241,6 +241,13 @@ class EventType:
     # Memory events
     MEMORY_CREATED = "memory.created"
 
+    # App events (per ADR-017)
+    APP_INITIALIZED = "app.initialized"
+    APP_ACTION_REQUESTED = "app.action.requested"
+    APP_ACTION_EXECUTED = "app.action.executed"
+    APP_ACTION_FAILED = "app.action.failed"
+    APP_OBSERVATION_SENT = "app.observation.sent"
+
 
 async def emit_event(event_type: str, simulation_id: str = None, data: dict = None):
     """Emit an event to connected clients.

@@ -1009,3 +1009,245 @@ class ExperimentRunModel(Base):
             started_at=started_at,
             completed_at=completed_at,
         )
+
+
+class AppInstanceModel(Base):
+    """Database model for app instances per simulation.
+
+    Stores simulated app instances and their state per ADR-017.
+    """
+
+    __tablename__ = "app_instances"
+
+    id = Column(String(36), primary_key=True)
+    simulation_id = Column(String(8), ForeignKey("simulations.id"), nullable=False)
+    app_id = Column(String(50), nullable=False)
+    config_json = Column(Text, nullable=False, default="{}")
+    state_json = Column(Text, nullable=False, default="{}")
+    created_at = Column(DateTime, default=_utc_now)
+    updated_at = Column(DateTime, default=_utc_now, onupdate=_utc_now)
+
+    # Relationships
+    simulation = relationship("SimulationModel")
+
+    def to_dict(self) -> dict[str, Any]:
+        """Convert to dictionary."""
+        return {
+            "id": self.id,
+            "simulation_id": self.simulation_id,
+            "app_id": self.app_id,
+            "config": json.loads(self.config_json) if self.config_json else {},
+            "state": json.loads(self.state_json) if self.state_json else {},
+            "created_at": self.created_at.isoformat() if self.created_at else None,
+            "updated_at": self.updated_at.isoformat() if self.updated_at else None,
+        }
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> "AppInstanceModel":
+        """Create from dictionary."""
+        return cls(
+            id=data["id"],
+            simulation_id=data["simulation_id"],
+            app_id=data["app_id"],
+            config_json=json.dumps(data.get("config", {})),
+            state_json=json.dumps(data.get("state", {})),
+        )
+
+
+class AppActionLogModel(Base):
+    """Database model for app action audit log.
+
+    Stores all app actions for auditing per ADR-017.
+    """
+
+    __tablename__ = "app_action_log"
+
+    id = Column(String(36), primary_key=True)
+    app_instance_id = Column(String(36), ForeignKey("app_instances.id"), nullable=False)
+    agent_id = Column(String(8), nullable=False)
+    step = Column(Integer, nullable=False)
+    action_name = Column(String(100), nullable=False)
+    params_json = Column(Text, nullable=False, default="{}")
+    success = Column(Integer, nullable=False)  # 0 or 1
+    result_json = Column(Text, nullable=True)
+    error = Column(Text, nullable=True)
+    executed_at = Column(DateTime, default=_utc_now)
+
+    # Relationships
+    app_instance = relationship("AppInstanceModel")
+
+    def to_dict(self) -> dict[str, Any]:
+        """Convert to dictionary."""
+        return {
+            "id": self.id,
+            "app_instance_id": self.app_instance_id,
+            "agent_id": self.agent_id,
+            "step": self.step,
+            "action_name": self.action_name,
+            "params": json.loads(self.params_json) if self.params_json else {},
+            "success": bool(self.success),
+            "result": json.loads(self.result_json) if self.result_json else None,
+            "error": self.error,
+            "executed_at": self.executed_at.isoformat() if self.executed_at else None,
+        }
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> "AppActionLogModel":
+        """Create from dictionary."""
+        return cls(
+            id=data["id"],
+            app_instance_id=data["app_instance_id"],
+            agent_id=data["agent_id"],
+            step=data["step"],
+            action_name=data["action_name"],
+            params_json=json.dumps(data.get("params", {})),
+            success=int(data.get("success", False)),
+            result_json=json.dumps(data.get("result")) if data.get("result") else None,
+            error=data.get("error"),
+        )
+
+
+class AppDefinitionModel(Base):
+    """Database model for user-created app definitions.
+
+    Stores JSON app definitions that can be loaded as DynamicApps
+    per ADR-018.
+    """
+
+    __tablename__ = "app_definitions"
+
+    id = Column(String(36), primary_key=True)
+    app_id = Column(String(50), nullable=False, unique=True, index=True)
+    name = Column(String(100), nullable=False)
+    description = Column(Text, nullable=True)
+    category = Column(String(50), nullable=False, index=True)
+    icon = Column(String(50), nullable=True)
+    version = Column(Integer, default=1, nullable=False)
+    definition_json = Column(Text, nullable=False)  # Full AppDefinition as JSON
+    is_builtin = Column(Integer, default=0, nullable=False)  # Boolean as int
+    is_active = Column(Integer, default=1, nullable=False, index=True)  # Boolean as int (soft delete)
+    created_by = Column(String(255), nullable=True)
+    created_at = Column(DateTime, default=_utc_now)
+    updated_at = Column(DateTime, default=_utc_now, onupdate=_utc_now)
+
+    # Relationships
+    versions = relationship(
+        "AppDefinitionVersionModel",
+        back_populates="app_definition",
+        cascade="all, delete-orphan",
+    )
+
+    def to_dict(self) -> dict[str, Any]:
+        """Convert to dictionary."""
+        return {
+            "id": self.id,
+            "app_id": self.app_id,
+            "name": self.name,
+            "description": self.description,
+            "category": self.category,
+            "icon": self.icon,
+            "version": self.version,
+            "definition": json.loads(self.definition_json) if self.definition_json else {},
+            "is_builtin": bool(self.is_builtin),
+            "is_active": bool(self.is_active),
+            "created_by": self.created_by,
+            "created_at": self.created_at.isoformat() if self.created_at else None,
+            "updated_at": self.updated_at.isoformat() if self.updated_at else None,
+        }
+
+    def to_summary_dict(self) -> dict[str, Any]:
+        """Convert to summary dictionary (without full definition)."""
+        definition = json.loads(self.definition_json) if self.definition_json else {}
+        actions = definition.get("actions", [])
+        return {
+            "id": self.id,
+            "app_id": self.app_id,
+            "name": self.name,
+            "description": self.description,
+            "category": self.category,
+            "icon": self.icon,
+            "version": self.version,
+            "action_count": len(actions),
+            "is_builtin": bool(self.is_builtin),
+            "is_active": bool(self.is_active),
+            "created_by": self.created_by,
+            "created_at": self.created_at.isoformat() if self.created_at else None,
+            "updated_at": self.updated_at.isoformat() if self.updated_at else None,
+        }
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> "AppDefinitionModel":
+        """Create from dictionary."""
+        definition = data.get("definition", {})
+        if not definition:
+            # Build definition from flat data
+            definition = {
+                "app_id": data["app_id"],
+                "name": data["name"],
+                "description": data.get("description", ""),
+                "category": data["category"],
+                "icon": data.get("icon", ""),
+                "actions": data.get("actions", []),
+                "state_schema": data.get("state_schema", []),
+                "initial_config": data.get("initial_config", {}),
+                "config_schema": data.get("config_schema", []),
+            }
+
+        return cls(
+            id=data["id"],
+            app_id=data["app_id"],
+            name=data["name"],
+            description=data.get("description"),
+            category=data["category"],
+            icon=data.get("icon"),
+            version=data.get("version", 1),
+            definition_json=json.dumps(definition),
+            is_builtin=int(data.get("is_builtin", False)),
+            is_active=int(data.get("is_active", True)),
+            created_by=data.get("created_by"),
+        )
+
+
+class AppDefinitionVersionModel(Base):
+    """Database model for app definition version history.
+
+    Stores previous versions of app definitions for rollback
+    per ADR-018.
+    """
+
+    __tablename__ = "app_definition_versions"
+
+    id = Column(String(36), primary_key=True)
+    app_definition_id = Column(
+        String(36),
+        ForeignKey("app_definitions.id"),
+        nullable=False,
+        index=True,
+    )
+    version = Column(Integer, nullable=False)
+    definition_json = Column(Text, nullable=False)
+    created_at = Column(DateTime, default=_utc_now)
+
+    # Relationships
+    app_definition = relationship("AppDefinitionModel", back_populates="versions")
+
+    def to_dict(self) -> dict[str, Any]:
+        """Convert to dictionary."""
+        return {
+            "id": self.id,
+            "app_definition_id": self.app_definition_id,
+            "version": self.version,
+            "definition": json.loads(self.definition_json) if self.definition_json else {},
+            "created_at": self.created_at.isoformat() if self.created_at else None,
+        }
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> "AppDefinitionVersionModel":
+        """Create from dictionary."""
+        definition = data.get("definition", {})
+        return cls(
+            id=data["id"],
+            app_definition_id=data["app_definition_id"],
+            version=data["version"],
+            definition_json=json.dumps(definition),
+        )

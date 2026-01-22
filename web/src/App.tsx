@@ -6,6 +6,9 @@ import Simulations from './pages/Simulations'
 import SimulationCreate from './pages/SimulationCreate'
 import SimulationDetail from './pages/SimulationDetail'
 import Personas from './pages/Personas'
+import Apps from './pages/Apps'
+import AppCreate from './pages/AppCreate'
+import AppEdit from './pages/AppEdit'
 import Settings from './pages/Settings'
 import NotFound from './pages/NotFound'
 
@@ -19,6 +22,9 @@ function App() {
           <Route path="/simulations/new" element={<SimulationCreate />} />
           <Route path="/simulations/:id" element={<SimulationDetail />} />
           <Route path="/personas" element={<Personas />} />
+          <Route path="/apps" element={<Apps />} />
+          <Route path="/apps/new" element={<AppCreate />} />
+          <Route path="/apps/:id" element={<AppEdit />} />
           <Route path="/settings" element={<Settings />} />
           <Route path="*" element={<NotFound />} />
         </Routes>

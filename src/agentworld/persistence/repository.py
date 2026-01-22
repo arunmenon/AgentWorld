@@ -24,6 +24,10 @@ from agentworld.persistence.models import (
     ExperimentModel,
     ExperimentVariantModel,
     ExperimentRunModel,
+    AppInstanceModel,
+    AppActionLogModel,
+    AppDefinitionModel,
+    AppDefinitionVersionModel,
 )
 
 
@@ -1555,3 +1559,518 @@ class Repository:
 
         models = self.session.query(MessageEvaluationModel).filter_by(message_id=message_id).all()
         return [model.to_dict() for model in models]
+
+    # App Instance methods (per ADR-017)
+
+    def save_app_instance(self, instance_data: dict[str, Any]) -> str:
+        """Save an app instance.
+
+        Args:
+            instance_data: App instance data dictionary
+
+        Returns:
+            Instance ID
+        """
+        import json
+        model = self.session.query(AppInstanceModel).filter_by(id=instance_data["id"]).first()
+        if model:
+            # Update existing
+            model.config_json = json.dumps(instance_data.get("config", {}))
+            model.state_json = json.dumps(instance_data.get("state", {}))
+            model.updated_at = datetime.now(UTC)
+        else:
+            # Create new
+            model = AppInstanceModel(
+                id=instance_data["id"],
+                simulation_id=instance_data["simulation_id"],
+                app_id=instance_data["app_id"],
+                config_json=json.dumps(instance_data.get("config", {})),
+                state_json=json.dumps(instance_data.get("state", {})),
+            )
+            self.session.add(model)
+        self.session.commit()
+        return model.id
+
+    def get_app_instance(self, instance_id: str) -> dict[str, Any] | None:
+        """Get an app instance by ID.
+
+        Args:
+            instance_id: Instance ID
+
+        Returns:
+            Instance data or None if not found
+        """
+        model = self.session.query(AppInstanceModel).filter_by(id=instance_id).first()
+        if model is None:
+            return None
+        return model.to_dict()
+
+    def get_app_instances_for_simulation(
+        self,
+        simulation_id: str,
+    ) -> list[dict[str, Any]]:
+        """Get all app instances for a simulation.
+
+        Args:
+            simulation_id: Simulation ID
+
+        Returns:
+            List of instance dictionaries
+        """
+        models = (
+            self.session.query(AppInstanceModel)
+            .filter_by(simulation_id=simulation_id)
+            .all()
+        )
+        return [model.to_dict() for model in models]
+
+    def get_app_instance_by_app_id(
+        self,
+        simulation_id: str,
+        app_id: str,
+    ) -> dict[str, Any] | None:
+        """Get an app instance by simulation and app ID.
+
+        Args:
+            simulation_id: Simulation ID
+            app_id: App ID (e.g., 'paypal')
+
+        Returns:
+            Instance data or None if not found
+        """
+        model = (
+            self.session.query(AppInstanceModel)
+            .filter_by(simulation_id=simulation_id, app_id=app_id)
+            .first()
+        )
+        if model is None:
+            return None
+        return model.to_dict()
+
+    def delete_app_instances_for_simulation(self, simulation_id: str) -> int:
+        """Delete all app instances for a simulation.
+
+        Args:
+            simulation_id: Simulation ID
+
+        Returns:
+            Number of instances deleted
+        """
+        # First delete action logs
+        instances = (
+            self.session.query(AppInstanceModel)
+            .filter_by(simulation_id=simulation_id)
+            .all()
+        )
+        for inst in instances:
+            self.session.query(AppActionLogModel).filter_by(
+                app_instance_id=inst.id
+            ).delete()
+
+        count = (
+            self.session.query(AppInstanceModel)
+            .filter_by(simulation_id=simulation_id)
+            .delete()
+        )
+        self.session.commit()
+        return count
+
+    # App Action Log methods (per ADR-017)
+
+    def save_app_action_log(self, log_data: dict[str, Any]) -> str:
+        """Save an app action log entry.
+
+        Args:
+            log_data: Action log data dictionary
+
+        Returns:
+            Log entry ID
+        """
+        import json
+        model = AppActionLogModel(
+            id=log_data["id"],
+            app_instance_id=log_data["app_instance_id"],
+            agent_id=log_data["agent_id"],
+            step=log_data["step"],
+            action_name=log_data["action_name"],
+            params_json=json.dumps(log_data.get("params", {})),
+            success=int(log_data.get("success", False)),
+            result_json=json.dumps(log_data.get("result")) if log_data.get("result") else None,
+            error=log_data.get("error"),
+        )
+        self.session.add(model)
+        self.session.commit()
+        return model.id
+
+    def get_app_action_log(
+        self,
+        app_instance_id: str,
+        agent_id: str | None = None,
+        step: int | None = None,
+        limit: int = 100,
+    ) -> list[dict[str, Any]]:
+        """Get action log entries for an app instance.
+
+        Args:
+            app_instance_id: App instance ID
+            agent_id: Optional filter by agent
+            step: Optional filter by step
+            limit: Maximum number of results
+
+        Returns:
+            List of log entry dictionaries
+        """
+        query = self.session.query(AppActionLogModel).filter_by(
+            app_instance_id=app_instance_id
+        )
+
+        if agent_id is not None:
+            query = query.filter_by(agent_id=agent_id)
+        if step is not None:
+            query = query.filter_by(step=step)
+
+        query = query.order_by(AppActionLogModel.executed_at.desc())
+        query = query.limit(limit)
+
+        return [model.to_dict() for model in query.all()]
+
+    def get_app_action_log_for_simulation(
+        self,
+        simulation_id: str,
+        app_id: str | None = None,
+        agent_id: str | None = None,
+        limit: int = 100,
+    ) -> list[dict[str, Any]]:
+        """Get action log entries for a simulation.
+
+        Args:
+            simulation_id: Simulation ID
+            app_id: Optional filter by app
+            agent_id: Optional filter by agent
+            limit: Maximum number of results
+
+        Returns:
+            List of log entry dictionaries
+        """
+        # Get app instances for this simulation
+        instance_query = self.session.query(AppInstanceModel).filter_by(
+            simulation_id=simulation_id
+        )
+        if app_id is not None:
+            instance_query = instance_query.filter_by(app_id=app_id)
+
+        instance_ids = [inst.id for inst in instance_query.all()]
+
+        if not instance_ids:
+            return []
+
+        query = self.session.query(AppActionLogModel).filter(
+            AppActionLogModel.app_instance_id.in_(instance_ids)
+        )
+
+        if agent_id is not None:
+            query = query.filter_by(agent_id=agent_id)
+
+        query = query.order_by(AppActionLogModel.executed_at.desc())
+        query = query.limit(limit)
+
+        return [model.to_dict() for model in query.all()]
+
+    # App Definition methods (per ADR-018)
+
+    def save_app_definition(self, definition_data: dict[str, Any]) -> str:
+        """Save an app definition.
+
+        Args:
+            definition_data: App definition data dictionary
+
+        Returns:
+            Definition ID
+        """
+        import json
+
+        model = self.session.query(AppDefinitionModel).filter_by(
+            id=definition_data.get("id")
+        ).first()
+
+        if model:
+            # Update existing
+            model.name = definition_data.get("name", model.name)
+            model.description = definition_data.get("description", model.description)
+            model.category = definition_data.get("category", model.category)
+            model.icon = definition_data.get("icon", model.icon)
+            model.definition_json = json.dumps(definition_data.get("definition", {}))
+            model.is_active = int(definition_data.get("is_active", 1))
+            model.version = definition_data.get("version", model.version)
+            model.updated_at = datetime.now(UTC)
+        else:
+            # Create new
+            import uuid
+            model = AppDefinitionModel(
+                id=definition_data.get("id", str(uuid.uuid4())),
+                app_id=definition_data["app_id"],
+                name=definition_data["name"],
+                description=definition_data.get("description"),
+                category=definition_data["category"],
+                icon=definition_data.get("icon"),
+                version=definition_data.get("version", 1),
+                definition_json=json.dumps(definition_data.get("definition", {})),
+                is_builtin=int(definition_data.get("is_builtin", 0)),
+                is_active=int(definition_data.get("is_active", 1)),
+                created_by=definition_data.get("created_by"),
+            )
+            self.session.add(model)
+
+        self.session.commit()
+        return model.id
+
+    def get_app_definition(self, definition_id: str) -> dict[str, Any] | None:
+        """Get an app definition by ID.
+
+        Args:
+            definition_id: Definition ID
+
+        Returns:
+            Definition data or None if not found
+        """
+        model = self.session.query(AppDefinitionModel).filter_by(id=definition_id).first()
+        if model is None:
+            return None
+        return model.to_dict()
+
+    def get_app_definition_by_app_id(self, app_id: str) -> dict[str, Any] | None:
+        """Get an app definition by app_id.
+
+        Args:
+            app_id: Unique app identifier (e.g., 'my_payment_app')
+
+        Returns:
+            Definition data or None if not found
+        """
+        model = (
+            self.session.query(AppDefinitionModel)
+            .filter_by(app_id=app_id, is_active=1)
+            .first()
+        )
+        if model is None:
+            return None
+        return model.to_dict()
+
+    def list_app_definitions(
+        self,
+        category: str | None = None,
+        is_builtin: bool | None = None,
+        search: str | None = None,
+        include_inactive: bool = False,
+        limit: int = 100,
+        offset: int = 0,
+    ) -> list[dict[str, Any]]:
+        """List app definitions.
+
+        Args:
+            category: Optional filter by category
+            is_builtin: Optional filter by builtin status
+            search: Optional search string for name/description
+            include_inactive: Include soft-deleted definitions
+            limit: Maximum number of results
+            offset: Number of results to skip
+
+        Returns:
+            List of definition dictionaries
+        """
+        query = self.session.query(AppDefinitionModel)
+
+        if not include_inactive:
+            query = query.filter_by(is_active=1)
+
+        if category is not None:
+            query = query.filter_by(category=category)
+
+        if is_builtin is not None:
+            query = query.filter_by(is_builtin=int(is_builtin))
+
+        if search is not None:
+            search_pattern = f"%{search}%"
+            query = query.filter(
+                (AppDefinitionModel.name.ilike(search_pattern)) |
+                (AppDefinitionModel.description.ilike(search_pattern)) |
+                (AppDefinitionModel.app_id.ilike(search_pattern))
+            )
+
+        query = query.order_by(AppDefinitionModel.name.asc())
+        query = query.limit(limit).offset(offset)
+
+        return [model.to_dict() for model in query.all()]
+
+    def update_app_definition(
+        self,
+        definition_id: str,
+        updates: dict[str, Any],
+    ) -> bool:
+        """Update an app definition.
+
+        Args:
+            definition_id: Definition ID
+            updates: Dictionary of fields to update
+
+        Returns:
+            True if updated, False if not found
+        """
+        import json
+
+        model = self.session.query(AppDefinitionModel).filter_by(id=definition_id).first()
+        if model is None:
+            return False
+
+        if "name" in updates:
+            model.name = updates["name"]
+        if "description" in updates:
+            model.description = updates["description"]
+        if "category" in updates:
+            model.category = updates["category"]
+        if "icon" in updates:
+            model.icon = updates["icon"]
+        if "definition" in updates:
+            model.definition_json = json.dumps(updates["definition"])
+        if "is_active" in updates:
+            model.is_active = int(updates["is_active"])
+        if "version" in updates:
+            model.version = updates["version"]
+
+        model.updated_at = datetime.now(UTC)
+        self.session.commit()
+        return True
+
+    def delete_app_definition(self, definition_id: str, hard_delete: bool = False) -> bool:
+        """Delete an app definition.
+
+        Args:
+            definition_id: Definition ID
+            hard_delete: If True, permanently delete; if False, soft-delete
+
+        Returns:
+            True if deleted, False if not found
+        """
+        model = self.session.query(AppDefinitionModel).filter_by(id=definition_id).first()
+        if model is None:
+            return False
+
+        if hard_delete:
+            # Delete version history first
+            self.session.query(AppDefinitionVersionModel).filter_by(
+                app_definition_id=definition_id
+            ).delete()
+            self.session.delete(model)
+        else:
+            # Soft delete
+            model.is_active = 0
+            model.updated_at = datetime.now(UTC)
+
+        self.session.commit()
+        return True
+
+    def count_app_definitions(
+        self,
+        category: str | None = None,
+        is_builtin: bool | None = None,
+        include_inactive: bool = False,
+    ) -> int:
+        """Count app definitions.
+
+        Args:
+            category: Optional filter by category
+            is_builtin: Optional filter by builtin status
+            include_inactive: Include soft-deleted definitions
+
+        Returns:
+            Count of definitions
+        """
+        query = self.session.query(AppDefinitionModel)
+
+        if not include_inactive:
+            query = query.filter_by(is_active=1)
+
+        if category is not None:
+            query = query.filter_by(category=category)
+
+        if is_builtin is not None:
+            query = query.filter_by(is_builtin=int(is_builtin))
+
+        return query.count()
+
+    # App Definition Version methods
+
+    def save_app_definition_version(
+        self,
+        app_definition_id: str,
+        version: int,
+        definition: dict[str, Any],
+    ) -> str:
+        """Save a version snapshot of an app definition.
+
+        Args:
+            app_definition_id: App definition ID
+            version: Version number
+            definition: Full definition JSON
+
+        Returns:
+            Version record ID
+        """
+        import json
+        import uuid
+
+        model = AppDefinitionVersionModel(
+            id=str(uuid.uuid4()),
+            app_definition_id=app_definition_id,
+            version=version,
+            definition_json=json.dumps(definition),
+        )
+        self.session.add(model)
+        self.session.commit()
+        return model.id
+
+    def get_app_definition_versions(
+        self,
+        app_definition_id: str,
+        limit: int = 50,
+    ) -> list[dict[str, Any]]:
+        """Get version history for an app definition.
+
+        Args:
+            app_definition_id: App definition ID
+            limit: Maximum number of versions to return
+
+        Returns:
+            List of version dictionaries, newest first
+        """
+        models = (
+            self.session.query(AppDefinitionVersionModel)
+            .filter_by(app_definition_id=app_definition_id)
+            .order_by(AppDefinitionVersionModel.version.desc())
+            .limit(limit)
+            .all()
+        )
+        return [model.to_dict() for model in models]
+
+    def get_app_definition_version(
+        self,
+        app_definition_id: str,
+        version: int,
+    ) -> dict[str, Any] | None:
+        """Get a specific version of an app definition.
+
+        Args:
+            app_definition_id: App definition ID
+            version: Version number
+
+        Returns:
+            Version data or None if not found
+        """
+        model = (
+            self.session.query(AppDefinitionVersionModel)
+            .filter_by(app_definition_id=app_definition_id, version=version)
+            .first()
+        )
+        if model is None:
+            return None
+        return model.to_dict()
