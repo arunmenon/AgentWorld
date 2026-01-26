@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useEffect } from 'react'
 import { Check, ChevronRight, ChevronLeft, Sparkles, Copy } from 'lucide-react'
 import {
   Button,
@@ -298,6 +298,18 @@ export function PersonaWizard({
   }))
 
   const steps = ['Traits', 'Identity', 'Preview']
+
+  // Reset form data when modal opens or initialData changes
+  useEffect(() => {
+    if (isOpen) {
+      setStep(1)
+      setFormData({
+        ...defaultFormData,
+        ...initialData,
+        traits: { ...defaultTraits, ...initialData?.traits },
+      })
+    }
+  }, [isOpen, initialData])
 
   // Reset when modal opens/closes
   const handleClose = () => {
