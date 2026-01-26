@@ -114,6 +114,12 @@ async def get_simulation(simulation_id: str):
 @router.post("/simulations", response_model=SimulationResponse, status_code=201)
 async def create_simulation(request: CreateSimulationRequest):
     """Create a new simulation."""
+    import logging
+    logger = logging.getLogger(__name__)
+    logger.info(f"=== CREATE SIMULATION REQUEST ===")
+    logger.info(f"Name: {request.name}")
+    logger.info(f"Apps: {request.apps}")
+
     repo = get_repo()
 
     # Build agent configs
@@ -144,12 +150,21 @@ async def create_simulation(request: CreateSimulationRequest):
             ),
         ]
 
+    # Build apps config from request
+    apps_config = None
+    if request.apps:
+        apps_config = [
+            {"id": app.app_id, "config": app.config or {}}
+            for app in request.apps
+        ]
+
     config = SimulationConfig(
         name=request.name,
         agents=agent_configs,
         steps=request.steps,
         initial_prompt=request.initial_prompt,
         model=request.model,
+        apps=apps_config,
     )
 
     # Create simulation using runner
@@ -279,12 +294,15 @@ async def execute_step(simulation_id: str, request: StepRequest):
 
     # Get config from stored simulation
     config_data = sim_data.get("config") or {}
+    apps_config = config_data.get("apps")
+
     config = SimulationConfig(
         name=sim_data.get("name", "Simulation"),
         agents=agent_configs,
         steps=sim_data.get("total_steps", 10),
         initial_prompt=config_data.get("initial_prompt", ""),
         model=config_data.get("model", "openai/gpt-4o-mini"),
+        apps=apps_config,
     )
 
     # Create simulation instance
@@ -297,6 +315,10 @@ async def execute_step(simulation_id: str, request: StepRequest):
     for i, agent in enumerate(sim.agents):
         if i < len(agents_data):
             agent.id = agents_data[i].get("id", agent.id)
+
+    # Initialize apps if configured
+    if apps_config:
+        await sim.initialize_apps()
 
     # Connect injection manager for external agents
     sim.injection_manager = _get_injection_manager(simulation_id)

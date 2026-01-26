@@ -181,6 +181,16 @@ class Simulation:
 
         logger.info(f"Initialized {len(self._app_manager.get_app_ids())} apps for simulation {self.id}")
 
+        # Add app instructions to agent system prompts
+        app_prompt = self._app_manager.get_available_apps_prompt()
+        if app_prompt:
+            for agent in self.agents:
+                if agent.system_prompt:
+                    agent.system_prompt = f"{agent.system_prompt}\n\n{app_prompt}"
+                else:
+                    agent.system_prompt = app_prompt
+            logger.info(f"Added app instructions to {len(self.agents)} agents")
+
     def _initialize_topology(self) -> None:
         """Initialize topology based on configuration."""
         agent_ids = [agent.id for agent in self.agents]

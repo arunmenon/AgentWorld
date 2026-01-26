@@ -1,9 +1,24 @@
-import { useState } from 'react'
+import { useState, useMemo } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { Search, Check, Plus, X, ExternalLink } from 'lucide-react'
-import { Button, Badge, Input } from '@/components/ui'
+import { Search, Check, Plus, X, ExternalLink, Lock } from 'lucide-react'
+import { Button, Badge, Input, Tooltip } from '@/components/ui'
 import { cn } from '@/lib/utils'
 import { api, type AppDefinition, type AppCategory } from '@/lib/api'
+
+// Combined app type for picker (can be definition or built-in)
+interface PickerApp {
+  id: string // definition id for db apps, app_id for built-in
+  app_id: string
+  name: string
+  description: string | null
+  category: AppCategory
+  icon: string | null
+  actions_count: number
+  is_builtin: boolean
+  // Only for db apps
+  initial_config?: Record<string, unknown>
+  actions?: { name: string }[]
+}
 
 interface AppPickerModalProps {
   selectedAppIds: string[]
@@ -38,7 +53,8 @@ export function AppPickerModal({
   const [search, setSearch] = useState('')
   const [selectedCategory, setSelectedCategory] = useState<AppCategory | 'all'>('all')
 
-  const { data, isLoading } = useQuery({
+  // Fetch app definitions from database
+  const { data: definitionsData, isLoading: loadingDefs } = useQuery({
     queryKey: ['app-definitions', selectedCategory],
     queryFn: () =>
       api.getAppDefinitions({
@@ -46,10 +62,75 @@ export function AppPickerModal({
       }),
   })
 
-  const apps = data?.definitions || []
+  // Fetch built-in available apps
+  const { data: availableData, isLoading: loadingAvailable } = useQuery({
+    queryKey: ['available-apps'],
+    queryFn: () => api.getAvailableApps(),
+  })
 
-  // Filter by search
+  const isLoading = loadingDefs || loadingAvailable
+
+  // Merge definitions and built-in apps
+  const apps = useMemo(() => {
+    const definitions = definitionsData?.definitions || []
+    const availableApps = availableData?.apps || []
+    const result: PickerApp[] = []
+    const seenAppIds = new Set<string>()
+
+    // Add database definitions first
+    for (const def of definitions) {
+      seenAppIds.add(def.app_id)
+      result.push({
+        id: def.id,
+        app_id: def.app_id,
+        name: def.name,
+        description: def.description,
+        category: def.category,
+        icon: def.icon,
+        actions_count: def.actions?.length || 0,
+        is_builtin: def.is_builtin,
+        initial_config: def.initial_config,
+        actions: def.actions,
+      })
+    }
+
+    // Add built-in apps that aren't already in definitions
+    for (const app of availableApps) {
+      if (!seenAppIds.has(app.app_id)) {
+        // Infer category from app_id or default to payment
+        let category: AppCategory = 'payment'
+        if (app.app_id.includes('mail') || app.app_id.includes('email')) {
+          category = 'communication'
+        } else if (app.app_id.includes('shop') || app.app_id.includes('cart')) {
+          category = 'shopping'
+        } else if (app.app_id.includes('calendar')) {
+          category = 'calendar'
+        }
+
+        result.push({
+          id: `builtin-${app.app_id}`, // Use prefixed id for built-in
+          app_id: app.app_id,
+          name: app.name,
+          description: app.description,
+          category,
+          icon: category === 'payment' ? '💳' : category === 'communication' ? '📧' : '📦',
+          actions_count: app.actions?.length || 0,
+          is_builtin: true,
+          actions: app.actions?.map((a) => ({ name: a.name })),
+        })
+      }
+    }
+
+    return result
+  }, [definitionsData, availableData])
+
+  // Filter by search and category
   const filteredApps = apps.filter((app) => {
+    // Filter by category
+    if (selectedCategory !== 'all' && app.category !== selectedCategory) {
+      return false
+    }
+    // Filter by search
     if (!search) return true
     const query = search.toLowerCase()
     return (
@@ -59,10 +140,31 @@ export function AppPickerModal({
     )
   })
 
-  const handleSelect = (app: AppDefinition) => {
-    if (!selectedAppIds.includes(app.id)) {
-      onSelect(app)
+  const handleSelect = (app: PickerApp) => {
+    if (selectedAppIds.includes(app.id)) return
+
+    // Convert to AppDefinition format for the callback
+    const appDef: AppDefinition = {
+      id: app.id,
+      app_id: app.app_id,
+      name: app.name,
+      description: app.description,
+      category: app.category,
+      icon: app.icon,
+      version: 1,
+      actions: (app.actions || []).map((a) => ({
+        name: typeof a === 'string' ? a : a.name,
+        description: '',
+        logic: [],
+      })),
+      state_schema: [],
+      initial_config: app.initial_config || {},
+      is_builtin: app.is_builtin,
+      is_active: true,
+      created_at: new Date().toISOString(),
+      updated_at: null,
     }
+    onSelect(appDef)
   }
 
   return (
@@ -138,7 +240,6 @@ export function AppPickerModal({
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               {filteredApps.map((app) => {
                 const isSelected = selectedAppIds.includes(app.id)
-                const actionCount = app.actions?.length || 0
 
                 return (
                   <button
@@ -168,12 +269,17 @@ export function AppPickerModal({
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-2 mb-1">
                           <h4 className="font-medium truncate">{app.name}</h4>
+                          {app.is_builtin && (
+                            <Tooltip content="Built-in system app">
+                              <Lock className="h-3.5 w-3.5 text-foreground-muted flex-shrink-0" />
+                            </Tooltip>
+                          )}
                           {isSelected && (
                             <Check className="h-4 w-4 text-primary flex-shrink-0" />
                           )}
                         </div>
                         <p className="text-xs text-foreground-secondary">
-                          {actionCount} action{actionCount !== 1 ? 's' : ''}
+                          {app.actions_count} action{app.actions_count !== 1 ? 's' : ''}
                         </p>
                       </div>
                     </div>

@@ -27,3 +27,5 @@ export { ExportPanel } from './ExportPanel'
 export { AgentInjector } from './AgentInjector'
 
 export { EvaluationPanel } from './EvaluationPanel'
+
+export { AppsPanel } from './AppsPanel'

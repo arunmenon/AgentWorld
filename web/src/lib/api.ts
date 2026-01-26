@@ -692,4 +692,78 @@ export const api = {
   testAppDefinition: async (id: string, data: TestActionRequest) => {
     return request<TestActionResponse>(`/app-definitions/${id}/test`, { method: 'POST', body: data })
   },
+
+  // Simulation Apps (runtime state)
+  getSimulationApps: async (simulationId: string) => {
+    return request<{
+      apps: Array<{
+        id: string
+        simulation_id: string
+        app_id: string
+        config: Record<string, unknown>
+        state: Record<string, unknown>
+        created_at: string | null
+        updated_at: string | null
+      }>
+      total: number
+    }>(`/simulations/${simulationId}/apps`)
+  },
+
+  getSimulationAppState: async (simulationId: string, appId: string) => {
+    return request<{
+      id: string
+      simulation_id: string
+      app_id: string
+      config: Record<string, unknown>
+      state: Record<string, unknown>
+      created_at: string | null
+      updated_at: string | null
+    }>(`/simulations/${simulationId}/apps/${appId}`)
+  },
+
+  getSimulationAppActions: async (
+    simulationId: string,
+    params?: {
+      app_id?: string
+      agent_id?: string
+      limit?: number
+    }
+  ) => {
+    const searchParams = new URLSearchParams()
+    if (params?.app_id) searchParams.set('app_id', params.app_id)
+    if (params?.agent_id) searchParams.set('agent_id', params.agent_id)
+    if (params?.limit) searchParams.set('limit', params.limit.toString())
+    const query = searchParams.toString()
+    return request<{
+      actions: Array<{
+        id: string
+        app_instance_id: string
+        agent_id: string
+        step: number
+        action_name: string
+        params: Record<string, unknown>
+        success: boolean
+        result: Record<string, unknown> | null
+        error: string | null
+        executed_at: string | null
+      }>
+      total: number
+    }>(`/simulations/${simulationId}/actions${query ? `?${query}` : ''}`)
+  },
+
+  getAvailableApps: async () => {
+    return request<{
+      apps: Array<{
+        app_id: string
+        name: string
+        description: string
+        actions: Array<{
+          name: string
+          description: string
+          parameters: Record<string, unknown>
+          returns: Record<string, string>
+        }>
+      }>
+    }>('/apps/available')
+  },
 }

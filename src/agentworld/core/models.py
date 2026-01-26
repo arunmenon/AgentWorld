@@ -102,10 +102,11 @@ class SimulationConfig:
     model: str = "openai/gpt-4o-mini"
     seed: int | None = None
     temperature: float = 0.7
+    apps: list[dict[str, Any]] | None = None  # Apps for simulation
 
     def to_dict(self) -> dict[str, Any]:
         """Convert config to dictionary."""
-        return {
+        result = {
             "name": self.name,
             "agents": [a.to_dict() for a in self.agents],
             "steps": self.steps,
@@ -114,6 +115,9 @@ class SimulationConfig:
             "seed": self.seed,
             "temperature": self.temperature,
         }
+        if self.apps:
+            result["apps"] = self.apps
+        return result
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> "SimulationConfig":
@@ -130,6 +134,7 @@ class SimulationConfig:
             model=data.get("model", "openai/gpt-4o-mini"),
             seed=data.get("seed"),
             temperature=data.get("temperature", 0.7),
+            apps=data.get("apps"),
         )
 
 

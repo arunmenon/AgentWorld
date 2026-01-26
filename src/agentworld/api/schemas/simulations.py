@@ -1,7 +1,7 @@
 """Simulation API schemas."""
 
 from datetime import datetime
-from typing import Optional
+from typing import Any, Optional
 
 from pydantic import BaseModel, Field
 
@@ -42,6 +42,13 @@ class AgentConfigRequest(BaseModel):
     model: Optional[str] = None
 
 
+class AppConfigRequest(BaseModel):
+    """App configuration for simulation."""
+
+    app_id: str
+    config: Optional[dict[str, Any]] = None
+
+
 class CreateSimulationRequest(BaseModel):
     """Create simulation request."""
 
@@ -52,6 +59,7 @@ class CreateSimulationRequest(BaseModel):
     agents: Optional[list[AgentConfigRequest]] = None
     topology_type: Optional[str] = Field(default="fully_connected")
     config_yaml: Optional[str] = None  # Full YAML configuration
+    apps: Optional[list[AppConfigRequest]] = None  # Apps to add to simulation
 
 
 class StepRequest(BaseModel):

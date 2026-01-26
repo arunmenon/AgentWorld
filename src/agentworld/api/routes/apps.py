@@ -58,7 +58,11 @@ async def list_available_apps():
 
 @router.get("/simulations/{simulation_id}/apps", response_model=AppListResponse)
 async def list_simulation_apps(simulation_id: str):
-    """List all apps active in a simulation."""
+    """List all apps active in a simulation.
+
+    Returns app instances if simulation has been run, otherwise returns
+    apps from config (before instances are created).
+    """
     repo = get_repo()
 
     # Check simulation exists
@@ -69,19 +73,40 @@ async def list_simulation_apps(simulation_id: str):
             "message": f"Simulation '{simulation_id}' not found",
         })
 
+    # First try to get instantiated apps (simulation has run)
     instances = repo.get_app_instances_for_simulation(simulation_id)
-    apps = [
-        AppInstanceResponse(
-            id=inst["id"],
-            simulation_id=inst["simulation_id"],
-            app_id=inst["app_id"],
-            config=inst.get("config", {}),
-            state=inst.get("state", {}),
-            created_at=inst.get("created_at"),
-            updated_at=inst.get("updated_at"),
-        )
-        for inst in instances
-    ]
+
+    if instances:
+        # Return actual app instances with state
+        apps = [
+            AppInstanceResponse(
+                id=inst["id"],
+                simulation_id=inst["simulation_id"],
+                app_id=inst["app_id"],
+                config=inst.get("config", {}),
+                state=inst.get("state", {}),
+                created_at=inst.get("created_at"),
+                updated_at=inst.get("updated_at"),
+            )
+            for inst in instances
+        ]
+    else:
+        # Simulation hasn't run yet - return apps from config
+        config = sim.get("config") or {}
+        config_apps = config.get("apps", [])
+
+        apps = [
+            AppInstanceResponse(
+                id=f"pending-{app_config.get('id', 'unknown')}",
+                simulation_id=simulation_id,
+                app_id=app_config.get("id", "unknown"),
+                config=app_config.get("config", {}),
+                state={},  # No state yet
+                created_at=None,
+                updated_at=None,
+            )
+            for app_config in config_apps
+        ]
 
     return AppListResponse(apps=apps, total=len(apps))
 

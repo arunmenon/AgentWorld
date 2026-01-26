@@ -36,6 +36,7 @@ import {
   ExportPanel,
   AgentInjector,
   EvaluationPanel,
+  AppsPanel,
   type Message,
   type Memory,
 } from '@/components/simulation'
@@ -379,6 +380,13 @@ export default function SimulationDetail() {
               ))}
             </CardContent>
           </Card>
+
+          {/* Apps Panel */}
+          <AppsPanel
+            simulationId={id!}
+            agents={agentsList.map((a) => ({ id: a.id, name: a.name }))}
+            isRunning={simulation.status === 'running'}
+          />
         </div>
 
         {/* Right column: Conversation stream */}
