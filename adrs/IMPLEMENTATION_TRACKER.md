@@ -1,8 +1,8 @@
 # AgentWorld Implementation Tracker
 
-> **Last Updated:** 2026-01-27
-> **Current Phase:** Phase 10g - App Benchmark Evaluation (COMPLETE)
-> **Overall Progress:** 19/26 ADRs implemented (Phase 1: ADR-003, ADR-004, ADR-008, UI-ADR-005; Phase 2: ADR-005, ADR-006; Phase 3: ADR-009, ADR-011; Phase 4+: ADR-010, ADR-014, ADR-015; Phase 5: ADR-012, ADR-013; Phase 6: UI-ADR-001, UI-ADR-002; Phase 7: UI-ADR-003, UI-ADR-004; Phase 7+: ADR-016, ADR-017; Phase 10f: ADR-020; Phase 10g: ADR-021)
+> **Last Updated:** 2026-01-28
+> **Current Phase:** Phase 10g - App Benchmark Evaluation (IN PROGRESS)
+> **Overall Progress:** 18/26 ADRs implemented (Phase 1: ADR-003, ADR-004, ADR-008, UI-ADR-005; Phase 2: ADR-005, ADR-006; Phase 3: ADR-009, ADR-011; Phase 4+: ADR-010, ADR-014, ADR-015; Phase 5: ADR-012, ADR-013; Phase 6: UI-ADR-001, UI-ADR-002; Phase 7: UI-ADR-003, UI-ADR-004; Phase 7+: ADR-016, ADR-017; Phase 10f: ADR-020 ~90%; Phase 10g: ADR-021 ~60%)
 
 ---
 
@@ -36,8 +36,9 @@
 | 10c | App Studio: Creation Wizard | 🔴 | 🔴 | UI-010, UI-012 | Form-based app creation + sandbox | `scripts/verify_phase10c.py` |
 | 10d | App Studio: Visual Builder | 🔴 | 🔴 | UI-011 | No-code logic canvas | `scripts/verify_phase10d.py` |
 | 10e | App Studio: Sim Integration | 🔴 | 🔴 | UI-013 | Add apps to simulations | `scripts/verify_phase10e.py` |
-| 10f | τ-bench Evaluation | 🟢 | ⚠️ | 020 | Pass^k metrics + task evaluation | `scripts/verify_phase10f.py` |
-| 10g | App Benchmark Evaluation | 🟢 | ⚠️ | 021 | Quality metrics + scenario runner | `scripts/verify_phase10g.py` |
+| 10f | τ-bench Evaluation | 🟡 | ⚠️ | 020 | Pass^k metrics + task evaluation (~90%) | `scripts/verify_phase10f.py` |
+| 10g | App Benchmark Evaluation | 🟡 | ⚠️ | 021 | Quality metrics + scenario runner (~60%) | `scripts/verify_phase10g.py` |
+| 10h | Dual-Control Extension | 🔴 | 🔴 | 020.1 | τ²-bench dual-control support | `scripts/verify_phase10h.py` |
 
 > **Test Status Legend:** 🟢 All tests pass | ⚠️ Tests incomplete | 🔴 No tests
 >
@@ -1441,13 +1442,18 @@ Phase 10 is split into 6 sub-phases to enable incremental delivery and clear mil
 
 **Goal:** Task-based evaluation with pass^k reliability metrics, goal state verification, fault classification, and policy compliance
 **Exit Criteria:** Tasks can be defined with ground truth, executed k times, scored with pass^k metrics, and failures classified
-**Status:** 🟢 Complete
+**Status:** 🟡 ~90% Complete (missing: checkpoints, test suite, retry execution)
 **Depends On:** Phase 10a (Backend Core), ADR-010 (Evaluation Metrics)
 **ADRs:** ADR-020
 
 > **Note:** This phase implements τ-bench inspired evaluation patterns that complement
 > the existing ADR-010 behavioral evaluation system. It provides deterministic task
 > success/failure metrics rather than continuous quality scores.
+
+> **⚠️ Implementation Gap:** The following features from ADR-020 are not yet implemented:
+> - Checkpoint support for long-running tasks (Checkpoint dataclass, intermediate verification)
+> - Retry execution logic (config exists but no retry loop in runner)
+> - Dedicated test suite (no tests/evaluation/ or tests/tasks/ directories)
 
 ### ADR-020: τ-bench Inspired Evaluation Framework
 
@@ -1499,6 +1505,7 @@ Phase 10 is split into 6 sub-phases to enable incremental delivery and clear mil
 ### Phase 10f Exit Criteria
 
 ```markdown
+## Implemented ✅
 - [x] Pass^k metric correctly computed from trial results
 - [x] State verification catches all state mismatches
 - [x] Fault classifier categorizes failures by assignment and type
@@ -1510,6 +1517,12 @@ Phase 10 is split into 6 sub-phases to enable incremental delivery and clear mil
 - [x] Payment benchmark suite (8 predefined tasks)
 - [x] Shopping benchmark suite (9 predefined tasks)
 - [x] Integration with existing ADR-010 evaluation system
+
+## Not Implemented ❌
+- [ ] Checkpoint support for long-running tasks
+- [ ] Retry execution within trials (config only, no execution logic)
+- [ ] Trajectory export API endpoint
+- [ ] Dedicated test suite for ADR-020 components
 ```
 
 ---
@@ -1518,13 +1531,21 @@ Phase 10 is split into 6 sub-phases to enable incremental delivery and clear mil
 
 **Goal:** Quality scoring and test scenario framework for app definitions
 **Exit Criteria:** Apps can be scored on quality dimensions, tested via YAML scenarios, and benchmarked against reference implementations
-**Status:** 🟢 Complete
+**Status:** 🟡 ~60% Complete (missing: agent evaluation, regression detection, coverage analysis)
 **Depends On:** Phase 10a (Backend Core), Phase 10f (τ-bench)
 **ADRs:** ADR-021
 
 > **Note:** This phase implements app-specific evaluation patterns that complement
 > ADR-020's τ-bench task evaluation. It focuses on app definition quality and
 > functional testing rather than agent task completion.
+
+> **⚠️ Implementation Gap:** The following major components from ADR-021 are not implemented:
+> - **REQ-21-03: Agent Evaluation** - agent_eval.py missing (success rate, efficiency, error patterns)
+> - **REQ-21-05: Regression Detection** - regression.py missing (version comparison, breaking changes)
+> - **REQ-21-06: Coverage Analysis** - No branch/path coverage, control flow graph analysis
+> - **API Endpoints** - Missing: `/app-definitions/:id/coverage`, `/app-definitions/:id/compare/:version`
+> - **Test Suite** - No dedicated tests for quality.py, scenarios.py, benchmarks.py
+> - **Data Format** - Benchmarks hardcoded in Python, should be YAML per ADR spec
 
 ### ADR-021: App Benchmark & Evaluation Framework
 
@@ -1588,9 +1609,44 @@ Phase 10 is split into 6 sub-phases to enable incremental delivery and clear mil
 |-----------|--------|---------|--------------|-------|
 | apps.evaluation __init__ | 🟢 | `src/agentworld/apps/evaluation/__init__.py` | Import test | All exports |
 
+#### Agent Evaluation (NOT IMPLEMENTED)
+
+| Component | Status | File(s) | Verification | Notes |
+|-----------|--------|---------|--------------|-------|
+| AgentEvaluation dataclass | 🔴 | `src/agentworld/apps/evaluation/agent_eval.py` | - | Success rate, efficiency metrics |
+| EvaluationTask dataclass | 🔴 | `src/agentworld/apps/evaluation/agent_eval.py` | - | Task definition for agent eval |
+| evaluate_agent() | 🔴 | `src/agentworld/apps/evaluation/agent_eval.py` | - | Run agent through tasks |
+| Error pattern analysis | 🔴 | `src/agentworld/apps/evaluation/agent_eval.py` | - | Common failure modes |
+
+#### Regression Detection (NOT IMPLEMENTED)
+
+| Component | Status | File(s) | Verification | Notes |
+|-----------|--------|---------|--------------|-------|
+| RegressionReport dataclass | 🔴 | `src/agentworld/apps/evaluation/regression.py` | - | Version comparison results |
+| detect_regressions() | 🔴 | `src/agentworld/apps/evaluation/regression.py` | - | Compare app versions |
+| Breaking change detection | 🔴 | `src/agentworld/apps/evaluation/regression.py` | - | Action/state incompatibilities |
+| Performance delta calc | 🔴 | `src/agentworld/apps/evaluation/regression.py` | - | Benchmark comparison |
+
+#### Coverage Analysis (NOT IMPLEMENTED)
+
+| Component | Status | File(s) | Verification | Notes |
+|-----------|--------|---------|--------------|-------|
+| CoverageReport dataclass | 🔴 | `src/agentworld/apps/evaluation/coverage.py` | - | Branch/path coverage |
+| build_control_flow_graph() | 🔴 | `src/agentworld/apps/evaluation/coverage.py` | - | CFG from logic blocks |
+| enumerate_paths() | 🔴 | `src/agentworld/apps/evaluation/coverage.py` | - | All possible execution paths |
+| analyze_coverage() | 🔴 | `src/agentworld/apps/evaluation/coverage.py` | - | Track executed branches |
+
+#### Missing API Endpoints
+
+| Component | Status | File(s) | Verification | Notes |
+|-----------|--------|---------|--------------|-------|
+| GET /app-definitions/{id}/coverage | 🔴 | `src/agentworld/api/routes/app_definitions.py` | - | Coverage report |
+| GET /app-definitions/{id}/compare/{version} | 🔴 | `src/agentworld/api/routes/app_definitions.py` | - | Version regression check |
+
 ### Phase 10g Exit Criteria
 
 ```markdown
+## Implemented ✅
 - [x] Quality scoring with 6 dimensions (completeness, documentation, validation, error handling, state safety, consistency)
 - [x] Quality level classification (Poor < 50%, Fair < 70%, Good < 85%, Excellent >= 85%)
 - [x] Improvement suggestions generated from quality analysis
@@ -1601,6 +1657,269 @@ Phase 10 is split into 6 sub-phases to enable incremental delivery and clear mil
 - [x] 5 benchmark apps (counter, wallet, inventory, messaging, workflow)
 - [x] API endpoints for quality, evaluate, benchmark
 - [x] Module exports in apps.evaluation
+
+## Not Implemented ❌
+- [ ] Agent evaluation framework (REQ-21-03) - agent_eval.py
+- [ ] Regression detection (REQ-21-05) - regression.py
+- [ ] Coverage analysis (REQ-21-06) - coverage.py, CFG generation
+- [ ] Coverage API endpoint
+- [ ] Version comparison API endpoint
+- [ ] CSV export format
+- [ ] Benchmark YAML data files (currently hardcoded)
+- [ ] Dedicated test suite for evaluation components
+```
+
+---
+
+## Phase 10h: Dual-Control Extension (τ²-bench Compatibility)
+
+**Goal:** Enable dual-control evaluation where agents guide users who have separate device/tool access
+**Exit Criteria:** Apps support role-based access, agents can be assigned roles, dual-control tasks can be defined and evaluated with coordination tracking
+**Status:** 🔴 Not Started
+**Depends On:** Phase 10f (τ-bench Evaluation), Phase 10a (Backend Core)
+**ADRs:** ADR-020.1
+**UX Wireframes:** `docs/UI-WIREFRAMES-DUAL-CONTROL.md`
+
+> **Note:** This phase implements τ²-bench (Sierra Research, June 2025) dual-control patterns.
+> Key insight: Agent performance drops ~25 points when guiding users vs acting directly.
+> Enables measuring coordination overhead and communication quality.
+
+### ADR-020.1: Dual-Control Extension
+
+#### Phase 10h-1: App Access Control (Backend)
+
+| Component | Status | File(s) | Verification | Notes |
+|-----------|--------|---------|--------------|-------|
+| AppAccessType enum | 🔴 | `src/agentworld/apps/definition.py` | Import test | SHARED, ROLE_RESTRICTED, PER_AGENT |
+| AppStateType enum | 🔴 | `src/agentworld/apps/definition.py` | Import test | SHARED, PER_AGENT |
+| ToolType enum | 🔴 | `src/agentworld/apps/definition.py` | Import test | READ, WRITE |
+| AgentRole enum | 🔴 | `src/agentworld/core/agent.py` | Import test | PEER, SERVICE_AGENT, CUSTOMER |
+| AppDefinition extensions | 🔴 | `src/agentworld/apps/definition.py` | `pytest tests/apps/` | access_type, allowed_roles, state_type |
+| ActionDefinition.tool_type | 🔴 | `src/agentworld/apps/definition.py` | `pytest tests/apps/` | READ/WRITE annotation |
+| Access checking in execution | 🔴 | `src/agentworld/apps/dynamic.py` | `pytest tests/apps/` | Deny unauthorized access |
+| Per-agent state management | 🔴 | `src/agentworld/apps/dynamic.py` | `pytest tests/apps/` | Isolated state per agent |
+| DB schema: access columns | 🔴 | `src/agentworld/persistence/models.py` | Migration test | access_type, allowed_roles, state_type |
+
+#### Phase 10h-2: Dual-Control Tasks (Backend)
+
+| Component | Status | File(s) | Verification | Notes |
+|-----------|--------|---------|--------------|-------|
+| DualControlTaskDefinition | 🔴 | `src/agentworld/tasks/definitions.py` | Import test | Agent + user configs |
+| CoordinationHandoff dataclass | 🔴 | `src/agentworld/tasks/definitions.py` | Import test | Expected handoff points |
+| CoordinationEvent dataclass | 🔴 | `src/agentworld/tasks/coordination.py` | Import test | Tracked handoff events |
+| CoordinationMetrics dataclass | 🔴 | `src/agentworld/tasks/coordination.py` | Import test | Success rate, latency, clarity |
+| SoloDualComparison dataclass | 🔴 | `src/agentworld/tasks/definitions.py` | Import test | Mode comparison results |
+| DualControlRunner | 🔴 | `src/agentworld/tasks/dual_control.py` | `pytest tests/tasks/` | Executes dual-control tasks |
+| CoordinationTracker | 🔴 | `src/agentworld/tasks/coordination.py` | `pytest tests/tasks/` | Detects & tracks handoffs |
+| DB schema: dual_control_tasks | 🔴 | `src/agentworld/persistence/models.py` | Migration test | New table |
+| DB schema: coordination_events | 🔴 | `src/agentworld/persistence/models.py` | Migration test | New table |
+| DB schema: solo_dual_comparisons | 🔴 | `src/agentworld/persistence/models.py` | Migration test | New table |
+
+#### Phase 10h-3: Telecom Domain Apps
+
+| Component | Status | File(s) | Verification | Notes |
+|-----------|--------|---------|--------------|-------|
+| Telecom apps init | 🔴 | `src/agentworld/apps/telecom/__init__.py` | Import test | Module setup |
+| TelecomBackendApp | 🔴 | `src/agentworld/apps/telecom/backend.py` | `pytest tests/apps/` | Service agent backend |
+| UserDeviceApp | 🔴 | `src/agentworld/apps/telecom/device.py` | `pytest tests/apps/` | Customer device controls |
+| Telecom task scenarios | 🔴 | `src/agentworld/tasks/scenarios/telecom.py` | `pytest tests/tasks/` | Dual-control tasks |
+
+#### Phase 10h-4: API Endpoints
+
+| Component | Status | File(s) | Verification | Notes |
+|-----------|--------|---------|--------------|-------|
+| GET /apps/{id}/access | 🔴 | `src/agentworld/api/routes/app_definitions.py` | `pytest tests/api/` | Get access control |
+| PATCH /apps/{id}/access | 🔴 | `src/agentworld/api/routes/app_definitions.py` | `pytest tests/api/` | Update access control |
+| POST /dual-control-tasks | 🔴 | `src/agentworld/api/routes/dual_control.py` | `pytest tests/api/` | Create task |
+| GET /dual-control-tasks | 🔴 | `src/agentworld/api/routes/dual_control.py` | `pytest tests/api/` | List tasks |
+| GET /dual-control-tasks/{id} | 🔴 | `src/agentworld/api/routes/dual_control.py` | `pytest tests/api/` | Get task |
+| POST /dual-control-tasks/{id}/run | 🔴 | `src/agentworld/api/routes/dual_control.py` | `pytest tests/api/` | Run dual mode |
+| POST /dual-control-tasks/{id}/run-solo | 🔴 | `src/agentworld/api/routes/dual_control.py` | `pytest tests/api/` | Run solo mode |
+| POST /dual-control-tasks/{id}/compare | 🔴 | `src/agentworld/api/routes/dual_control.py` | `pytest tests/api/` | Compare modes |
+| GET /trials/{id}/coordination | 🔴 | `src/agentworld/api/routes/dual_control.py` | `pytest tests/api/` | Get coordination events |
+| Dual-control API schemas | 🔴 | `src/agentworld/api/schemas/dual_control.py` | Import test | Request/response models |
+
+#### Phase 10h-5: UI - App Access Control
+
+| Component | Status | File(s) | Verification | Notes |
+|-----------|--------|---------|--------------|-------|
+| AccessTypeSelector | 🔴 | `web/src/components/app-studio/access/AccessTypeSelector.tsx` | Manual test | Radio group |
+| RoleCheckboxes | 🔴 | `web/src/components/app-studio/access/RoleCheckboxes.tsx` | Manual test | Role selection |
+| StateTypeSelector | 🔴 | `web/src/components/app-studio/access/StateTypeSelector.tsx` | Manual test | State type toggle |
+| InfoStep updates | 🔴 | `web/src/components/app-studio/steps/InfoStep.tsx` | Manual test | Add access section |
+| ToolTypeBadge | 🔴 | `web/src/components/app-studio/ToolTypeBadge.tsx` | Manual test | READ/WRITE badge |
+| ActionCard updates | 🔴 | `web/src/components/app-studio/ActionCard.tsx` | Manual test | Tool type dropdown |
+
+#### Phase 10h-6: UI - Simulation Role Assignment
+
+| Component | Status | File(s) | Verification | Notes |
+|-----------|--------|---------|--------------|-------|
+| RoleSelector | 🔴 | `web/src/components/simulation/roles/RoleSelector.tsx` | Manual test | Role dropdown |
+| RoleAppFilter | 🔴 | `web/src/components/simulation/roles/RoleAppFilter.tsx` | Manual test | Filter apps by role |
+| AgentConfig updates | 🔴 | `web/src/components/simulation/AgentConfig.tsx` | Manual test | Add role dropdown |
+| AppsSection updates | 🔴 | `web/src/components/simulation/AppsSection.tsx` | Manual test | Group by access type |
+
+#### Phase 10h-7: UI - Runtime Coordination
+
+| Component | Status | File(s) | Verification | Notes |
+|-----------|--------|---------|--------------|-------|
+| CoordinationMarker | 🔴 | `web/src/components/simulation/timeline/CoordinationMarker.tsx` | Manual test | Handoff event marker |
+| CoordinationPanel | 🔴 | `web/src/components/simulation/timeline/CoordinationPanel.tsx` | Manual test | Metrics sidebar |
+| TimelineEvent updates | 🔴 | `web/src/components/simulation/timeline/TimelineEvent.tsx` | Manual test | Coordination styling |
+
+#### Phase 10h-8: UI - Task Definition & Results
+
+| Component | Status | File(s) | Verification | Notes |
+|-----------|--------|---------|--------------|-------|
+| DualControlTaskForm | 🔴 | `web/src/components/tasks/DualControlTaskForm.tsx` | Manual test | Task creation form |
+| HandoffEditor | 🔴 | `web/src/components/tasks/HandoffEditor.tsx` | Manual test | Define expected handoffs |
+| GoalStateEditor | 🔴 | `web/src/components/tasks/GoalStateEditor.tsx` | Manual test | Define success state |
+| SoloDualComparison | 🔴 | `web/src/components/tasks/SoloDualComparison.tsx` | Manual test | Comparison results |
+| CoordinationAnalysis | 🔴 | `web/src/components/tasks/CoordinationAnalysis.tsx` | Manual test | Handoff breakdown |
+| TaskCreate page | 🔴 | `web/src/pages/TaskCreate.tsx` | Manual test | New page |
+
+### Phase 10h Implementation Estimates
+
+| Sub-Phase | Description | Backend | UI | Total |
+|-----------|-------------|---------|-----|-------|
+| 10h-1 | App Access Control | 2-3 days | - | 2-3 days |
+| 10h-2 | Tool Type Annotations | 1 day | - | 1 day |
+| 10h-3 | Dual-Control Tasks | 3-4 days | - | 3-4 days |
+| 10h-4 | Telecom Domain Apps | 2-3 days | - | 2-3 days |
+| 10h-5 | Solo/Dual Comparison | 2 days | - | 2 days |
+| 10h-6 | Coordination Metrics | 2 days | - | 2 days |
+| **Backend Subtotal** | | **12-15 days** | - | - |
+| UI-1 | App Access Control | - | 2-3 days | 2-3 days |
+| UI-2 | Tool Type Annotation | - | 1 day | 1 day |
+| UI-3 | Role Assignment | - | 2 days | 2 days |
+| UI-4 | App Grouping | - | 1 day | 1 day |
+| UI-5 | Coordination Timeline | - | 2-3 days | 2-3 days |
+| UI-6 | Task Creation | - | 3-4 days | 3-4 days |
+| UI-7 | Comparison View | - | 2 days | 2 days |
+| **UI Subtotal** | | - | **13-16 days** | - |
+| **Combined (parallel)** | | | | **18-25 days** |
+
+> Backend and UI work can proceed in parallel after 10h-1 is complete.
+> Combined estimate assumes parallelization; sequential would be 25-31 days.
+
+### Phase 10h Exit Criteria
+
+```markdown
+- [ ] AppAccessType enum (SHARED, ROLE_RESTRICTED, PER_AGENT)
+- [ ] AppStateType enum (SHARED, PER_AGENT)
+- [ ] ToolType enum (READ, WRITE)
+- [ ] AgentRole enum (PEER, SERVICE_AGENT, CUSTOMER)
+- [ ] Access control enforced in app execution
+- [ ] Per-agent state isolation working
+- [ ] DualControlTaskDefinition with agent + user configs
+- [ ] CoordinationHandoff tracking working
+- [ ] DualControlRunner executes dual-control tasks
+- [ ] Solo vs dual comparison computes performance drop
+- [ ] TelecomBackendApp (service agent backend)
+- [ ] UserDeviceApp (customer device controls)
+- [ ] At least 5 telecom dual-control scenarios
+- [ ] API endpoints for dual-control tasks
+- [ ] UI: Access type selector in app wizard
+- [ ] UI: Tool type annotation on actions
+- [ ] UI: Role selector in simulation setup
+- [ ] UI: App filtering by role
+- [ ] UI: Coordination markers in timeline
+- [ ] UI: Coordination metrics panel
+- [ ] UI: Dual-control task creation form
+- [ ] UI: Solo vs dual comparison view
+```
+
+### Phase 10h Database Schema Extensions
+
+```sql
+-- App access control columns (ALTER existing table)
+ALTER TABLE app_definitions ADD COLUMN access_type TEXT DEFAULT 'shared';
+ALTER TABLE app_definitions ADD COLUMN allowed_roles JSON;
+ALTER TABLE app_definitions ADD COLUMN state_type TEXT DEFAULT 'shared';
+
+-- Dual-control task definitions
+CREATE TABLE dual_control_tasks (
+    id TEXT PRIMARY KEY,
+    task_id TEXT NOT NULL UNIQUE,
+    name TEXT NOT NULL,
+    description TEXT,
+    domain TEXT NOT NULL,
+    difficulty TEXT NOT NULL,
+
+    -- Agent configuration
+    agent_id TEXT NOT NULL,
+    agent_instruction TEXT NOT NULL,
+    agent_apps JSON NOT NULL,
+    agent_initial_state JSON,
+    agent_goal_state JSON,
+
+    -- User configuration
+    user_id TEXT NOT NULL,
+    user_instruction TEXT NOT NULL,
+    user_apps JSON NOT NULL,
+    user_initial_state JSON,
+    user_goal_state JSON,
+
+    -- Coordination
+    required_handoffs JSON,
+    max_turns INTEGER,
+    expected_coordination_count INTEGER,
+
+    is_active INTEGER DEFAULT 1,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX idx_dual_control_task_id ON dual_control_tasks(task_id);
+CREATE INDEX idx_dual_control_domain ON dual_control_tasks(domain);
+
+-- Coordination events
+CREATE TABLE coordination_events (
+    id TEXT PRIMARY KEY,
+    trial_id TEXT NOT NULL,
+    task_id TEXT NOT NULL,
+
+    instructor_id TEXT NOT NULL,
+    instructor_role TEXT NOT NULL,
+    instruction_text TEXT,
+
+    actor_id TEXT,
+    actor_role TEXT,
+    action_taken TEXT,
+    action_params JSON,
+
+    handoff_successful BOOLEAN,
+    latency_turns INTEGER,
+
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (trial_id) REFERENCES trial_results(id)
+);
+
+CREATE INDEX idx_coord_events_trial ON coordination_events(trial_id);
+
+-- Solo vs dual comparison results
+CREATE TABLE solo_dual_comparisons (
+    id TEXT PRIMARY KEY,
+    task_id TEXT NOT NULL,
+
+    solo_trials INTEGER,
+    solo_successes INTEGER,
+    solo_pass_1 REAL,
+    solo_pass_4 REAL,
+    solo_avg_steps REAL,
+
+    dual_trials INTEGER,
+    dual_successes INTEGER,
+    dual_pass_1 REAL,
+    dual_pass_4 REAL,
+    dual_avg_steps REAL,
+
+    performance_drop REAL,
+    step_increase REAL,
+
+    computed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (task_id) REFERENCES dual_control_tasks(id)
+);
 ```
 
 ---
@@ -1653,7 +1972,9 @@ Each sub-phase has its own verification script for incremental delivery:
 | 10c | `scripts/verify_phase10c.py` | Wizard + Sandbox |
 | 10d | `scripts/verify_phase10d.py` | Visual Builder |
 | 10e | `scripts/verify_phase10e.py` | Sim Integration |
-| 10f | `scripts/verify_phase10f.py` | Evaluation |
+| 10f | `scripts/verify_phase10f.py` | τ-bench Evaluation |
+| 10g | `scripts/verify_phase10g.py` | App Benchmarks |
+| 10h | `scripts/verify_phase10h.py` | Dual-Control |
 
 **Full Phase 10 Verification:**
 
@@ -1664,10 +1985,12 @@ python scripts/verify_phase10b.py && \
 python scripts/verify_phase10c.py && \
 python scripts/verify_phase10d.py && \
 python scripts/verify_phase10e.py && \
-python scripts/verify_phase10f.py
+python scripts/verify_phase10f.py && \
+python scripts/verify_phase10g.py && \
+python scripts/verify_phase10h.py
 
 # Or run pytest for all app-related tests
-pytest tests/apps/ tests/api/test_app_definitions.py tests/api/test_evaluation.py -v
+pytest tests/apps/ tests/api/test_app_definitions.py tests/api/test_evaluation.py tests/tasks/ -v
 ```
 
 ### Phase 10 MVP Path
@@ -1683,9 +2006,13 @@ This delivers:
 - Test apps in sandbox
 - Use apps in simulations
 
-**Deferred for enhancement:**
-- 10d (Visual Logic Builder) - JSON editing works without it
-- 10f (Evaluation Framework) - Nice-to-have for quality assurance
+**Enhancement phases (completed):**
+- 10f (τ-bench Evaluation) ⚠️ ~90% - Task evaluation with pass^k metrics (missing: checkpoints, tests)
+- 10g (App Benchmarks) ⚠️ ~60% - Quality scoring (missing: agent eval, regression, coverage)
+
+**Optional/advanced phases:**
+- 10d (Visual Logic Builder) - No-code canvas, JSON editing works without it
+- 10h (Dual-Control) - τ²-bench compatibility for agent-user coordination research
 
 ---
 
@@ -1998,6 +2325,9 @@ if __name__ == "__main__":
 | 2026-01-26 | - | Auto-tracked: ADR-009, ADR-011, ADR-012 (4 files modified) | Hook |
 | 2026-01-27 | - | Auto-tracked: ADR-012 (3 files modified) | Hook |
 | 2026-01-27 | 10g | ADR-021 App Benchmark Evaluation complete - quality.py (6 scoring dimensions), scenarios.py (YAML runner), benchmarks.py (5 benchmark apps), API endpoints (quality, evaluate, benchmark). Complements ADR-020 τ-bench for app-specific evaluation | Claude |
+| 2026-01-27 | 10h | ADR-020.1 Dual-Control Extension planned - τ²-bench compatibility for agent-user coordination. UX wireframes created (docs/UI-WIREFRAMES-DUAL-CONTROL.md). 8 sub-phases defined covering backend (access control, dual-control tasks, telecom domain) and UI (app access, role assignment, coordination timeline, task definition) | Claude |
+| 2026-01-28 | 10f/10g | **Implementation Review** - Thorough code review revealed gaps: **ADR-020 (~90%)**: Missing checkpoints, retry execution, test suite. **ADR-021 (~60%)**: Missing agent_eval.py (REQ-21-03), regression.py (REQ-21-05), coverage.py (REQ-21-06), 2 API endpoints, test suite. Status corrected from 🟢 to 🟡 | Claude |
+| 2026-01-28 | - | Auto-tracked: ADR-009, ADR-011, ADR-012 (5 files modified) | Hook |
 
 ---
 
