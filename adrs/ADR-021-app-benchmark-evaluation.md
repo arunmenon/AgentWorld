@@ -1,15 +1,16 @@
-# ADR-020: App Benchmark & Evaluation Framework
+# ADR-021: App Benchmark & Evaluation Framework
 
 ## Status
 Proposed
 
 ## Date
-2026-01-22
+2026-01-27
 
 ## Dependencies
 - **ADR-017**: Simulated Apps Framework (app execution)
 - **ADR-018**: App Studio Backend (dynamic apps)
 - **ADR-019**: App Definition Schema (logic language)
+- **ADR-020**: τ-bench Evaluation Framework (task-based evaluation)
 
 ## Context
 
@@ -24,13 +25,13 @@ As users create custom apps in the App Studio, there's no systematic way to eval
 
 | ID | Requirement | Priority | Description |
 |----|-------------|----------|-------------|
-| REQ-20-01 | App Quality Metrics | Must | Measurable quality criteria for app definitions |
-| REQ-20-02 | Test Scenario Runner | Must | Execute predefined test scenarios against apps |
-| REQ-20-03 | Agent Evaluation | Should | Measure agent competency with apps |
-| REQ-20-04 | Benchmark Suite | Should | Standard benchmark apps for comparison |
-| REQ-20-05 | Regression Detection | Should | Detect behavior changes between versions |
-| REQ-20-06 | Coverage Analysis | Could | Measure action/logic coverage |
-| REQ-20-07 | Export Results | Should | Export evaluation results for analysis |
+| REQ-21-01 | App Quality Metrics | Must | Measurable quality criteria for app definitions |
+| REQ-21-02 | Test Scenario Runner | Must | Execute predefined test scenarios against apps |
+| REQ-21-03 | Agent Evaluation | Should | Measure agent competency with apps |
+| REQ-21-04 | Benchmark Suite | Should | Standard benchmark apps for comparison |
+| REQ-21-05 | Regression Detection | Should | Detect behavior changes between versions |
+| REQ-21-06 | Coverage Analysis | Could | Measure action/logic coverage |
+| REQ-21-07 | Export Results | Should | Export evaluation results for analysis |
 
 ## Decision
 
@@ -387,64 +388,64 @@ src/agentworld/
 
 ## Validation Checklist
 
-### REQ-20-01: App Quality Metrics
+### REQ-21-01: App Quality Metrics
 
 | Test ID | Scenario | Expected Result | Verification |
 |---------|----------|-----------------|--------------|
-| V20-01-01 | Score minimal app | Low score | Missing docs, validation |
-| V20-01-02 | Score well-defined app | High score | All dimensions green |
-| V20-01-03 | Suggestions generated | Actionable | "Add description to X" |
-| V20-01-04 | Consistent scoring | Deterministic | Same app = same score |
+| V21-01-01 | Score minimal app | Low score | Missing docs, validation |
+| V21-01-02 | Score well-defined app | High score | All dimensions green |
+| V21-01-03 | Suggestions generated | Actionable | "Add description to X" |
+| V21-01-04 | Consistent scoring | Deterministic | Same app = same score |
 
-### REQ-20-02: Test Scenario Runner
-
-| Test ID | Scenario | Expected Result | Verification |
-|---------|----------|-----------------|--------------|
-| V20-02-01 | Run passing scenario | All steps pass | passed=true |
-| V20-02-02 | Run failing scenario | Failures captured | failures list populated |
-| V20-02-03 | State chains correctly | Intermediate state | Step 2 sees step 1 changes |
-| V20-02-04 | Assertions checked | Final state verified | Assertion failures reported |
-
-### REQ-20-03: Agent Evaluation
+### REQ-21-02: Test Scenario Runner
 
 | Test ID | Scenario | Expected Result | Verification |
 |---------|----------|-----------------|--------------|
-| V20-03-01 | Track success rate | Accurate count | Matches manual count |
-| V20-03-02 | Measure efficiency | Ratio calculated | optimal/actual correct |
-| V20-03-03 | Detect error patterns | Patterns identified | Repeated errors flagged |
+| V21-02-01 | Run passing scenario | All steps pass | passed=true |
+| V21-02-02 | Run failing scenario | Failures captured | failures list populated |
+| V21-02-03 | State chains correctly | Intermediate state | Step 2 sees step 1 changes |
+| V21-02-04 | Assertions checked | Final state verified | Assertion failures reported |
 
-### REQ-20-04: Benchmark Suite
-
-| Test ID | Scenario | Expected Result | Verification |
-|---------|----------|-----------------|--------------|
-| V20-04-01 | All benchmarks exist | 5 benchmark apps | Loadable definitions |
-| V20-04-02 | Benchmarks are valid | Quality score > 80 | Self-validating |
-| V20-04-03 | Benchmark scenarios pass | 100% pass rate | No failures on reference |
-
-### REQ-20-05: Regression Detection
+### REQ-21-03: Agent Evaluation
 
 | Test ID | Scenario | Expected Result | Verification |
 |---------|----------|-----------------|--------------|
-| V20-05-01 | No changes | Empty report | No regressions |
-| V20-05-02 | Breaking change | is_breaking=true | new_failures populated |
-| V20-05-03 | Non-breaking change | is_breaking=false | Behavior unchanged |
-| V20-05-04 | Performance change | Deltas calculated | latency_change_pct set |
+| V21-03-01 | Track success rate | Accurate count | Matches manual count |
+| V21-03-02 | Measure efficiency | Ratio calculated | optimal/actual correct |
+| V21-03-03 | Detect error patterns | Patterns identified | Repeated errors flagged |
 
-### REQ-20-06: Coverage Analysis
-
-| Test ID | Scenario | Expected Result | Verification |
-|---------|----------|-----------------|--------------|
-| V20-06-01 | Action coverage | Percentage calculated | X/Y actions tested |
-| V20-06-02 | Logic path coverage | Branches counted | Branch coverage % |
-| V20-06-03 | Uncovered actions | Listed | "transfer never called" |
-
-### REQ-20-07: Export Results
+### REQ-21-04: Benchmark Suite
 
 | Test ID | Scenario | Expected Result | Verification |
 |---------|----------|-----------------|--------------|
-| V20-07-01 | Export JSON | Valid JSON | Parseable output |
-| V20-07-02 | Export CSV | Valid CSV | Spreadsheet-compatible |
-| V20-07-03 | Export includes all | Complete data | All metrics present |
+| V21-04-01 | All benchmarks exist | 5 benchmark apps | Loadable definitions |
+| V21-04-02 | Benchmarks are valid | Quality score > 80 | Self-validating |
+| V21-04-03 | Benchmark scenarios pass | 100% pass rate | No failures on reference |
+
+### REQ-21-05: Regression Detection
+
+| Test ID | Scenario | Expected Result | Verification |
+|---------|----------|-----------------|--------------|
+| V21-05-01 | No changes | Empty report | No regressions |
+| V21-05-02 | Breaking change | is_breaking=true | new_failures populated |
+| V21-05-03 | Non-breaking change | is_breaking=false | Behavior unchanged |
+| V21-05-04 | Performance change | Deltas calculated | latency_change_pct set |
+
+### REQ-21-06: Coverage Analysis
+
+| Test ID | Scenario | Expected Result | Verification |
+|---------|----------|-----------------|--------------|
+| V21-06-01 | Action coverage | Percentage calculated | X/Y actions tested |
+| V21-06-02 | Logic path coverage | Branches counted | Branch coverage % |
+| V21-06-03 | Uncovered actions | Listed | "transfer never called" |
+
+### REQ-21-07: Export Results
+
+| Test ID | Scenario | Expected Result | Verification |
+|---------|----------|-----------------|--------------|
+| V21-07-01 | Export JSON | Valid JSON | Parseable output |
+| V21-07-02 | Export CSV | Valid CSV | Spreadsheet-compatible |
+| V21-07-03 | Export includes all | Complete data | All metrics present |
 
 ---
 

@@ -1,8 +1,8 @@
 # AgentWorld Implementation Tracker
 
-> **Last Updated:** 2026-01-22
-> **Current Phase:** Phase 7+ - Agent Infrastructure Features (COMPLETE)
-> **Overall Progress:** 17/25 ADRs implemented (Phase 1: ADR-003, ADR-004, ADR-008, UI-ADR-005; Phase 2: ADR-005, ADR-006; Phase 3: ADR-009, ADR-011; Phase 4+: ADR-010, ADR-014, ADR-015; Phase 5: ADR-012, ADR-013; Phase 6: UI-ADR-001, UI-ADR-002; Phase 7: UI-ADR-003, UI-ADR-004; Phase 7+: ADR-016, ADR-017)
+> **Last Updated:** 2026-01-27
+> **Current Phase:** Phase 10g - App Benchmark Evaluation (COMPLETE)
+> **Overall Progress:** 19/26 ADRs implemented (Phase 1: ADR-003, ADR-004, ADR-008, UI-ADR-005; Phase 2: ADR-005, ADR-006; Phase 3: ADR-009, ADR-011; Phase 4+: ADR-010, ADR-014, ADR-015; Phase 5: ADR-012, ADR-013; Phase 6: UI-ADR-001, UI-ADR-002; Phase 7: UI-ADR-003, UI-ADR-004; Phase 7+: ADR-016, ADR-017; Phase 10f: ADR-020; Phase 10g: ADR-021)
 
 ---
 
@@ -36,7 +36,8 @@
 | 10c | App Studio: Creation Wizard | 🔴 | 🔴 | UI-010, UI-012 | Form-based app creation + sandbox | `scripts/verify_phase10c.py` |
 | 10d | App Studio: Visual Builder | 🔴 | 🔴 | UI-011 | No-code logic canvas | `scripts/verify_phase10d.py` |
 | 10e | App Studio: Sim Integration | 🔴 | 🔴 | UI-013 | Add apps to simulations | `scripts/verify_phase10e.py` |
-| 10f | App Studio: Evaluation | 🔴 | 🔴 | 020 | Quality metrics + benchmarks | `scripts/verify_phase10f.py` |
+| 10f | τ-bench Evaluation | 🟢 | ⚠️ | 020 | Pass^k metrics + task evaluation | `scripts/verify_phase10f.py` |
+| 10g | App Benchmark Evaluation | 🟢 | ⚠️ | 021 | Quality metrics + scenario runner | `scripts/verify_phase10g.py` |
 
 > **Test Status Legend:** 🟢 All tests pass | ⚠️ Tests incomplete | 🔴 No tests
 >
@@ -1436,47 +1437,170 @@ Phase 10 is split into 6 sub-phases to enable incremental delivery and clear mil
 
 ---
 
-## Phase 10f: Evaluation Framework
+## Phase 10f: τ-bench Inspired Evaluation Framework
 
-**Goal:** Quality metrics, benchmarks, and regression testing for apps
-**Exit Criteria:** Apps can be scored, tested with scenarios, and compared between versions
-**Status:** 🔴 Not Started
-**Depends On:** Phase 10a (Backend Core)
+**Goal:** Task-based evaluation with pass^k reliability metrics, goal state verification, fault classification, and policy compliance
+**Exit Criteria:** Tasks can be defined with ground truth, executed k times, scored with pass^k metrics, and failures classified
+**Status:** 🟢 Complete
+**Depends On:** Phase 10a (Backend Core), ADR-010 (Evaluation Metrics)
 **ADRs:** ADR-020
 
-> **Note:** This phase can run in parallel with 10c-10e. It provides tooling for
-> app quality assurance but is not required for basic app creation workflows.
+> **Note:** This phase implements τ-bench inspired evaluation patterns that complement
+> the existing ADR-010 behavioral evaluation system. It provides deterministic task
+> success/failure metrics rather than continuous quality scores.
 
-### ADR-020: App Benchmark & Evaluation Framework
+### ADR-020: τ-bench Inspired Evaluation Framework
+
+#### Database Models
 
 | Component | Status | File(s) | Verification | Notes |
 |-----------|--------|---------|--------------|-------|
-| Quality scoring | 🔴 | `src/agentworld/apps/evaluation/quality.py` | `pytest tests/apps/test_quality.py` | |
-| Scenario parser | 🔴 | `src/agentworld/apps/evaluation/scenarios.py` | `pytest tests/apps/test_scenarios.py` | |
-| Scenario runner | 🔴 | `src/agentworld/apps/evaluation/scenarios.py` | `pytest tests/apps/test_scenarios.py` | |
-| Agent evaluation | 🔴 | `src/agentworld/apps/evaluation/agent_eval.py` | `pytest tests/apps/test_agent_eval.py` | |
-| Benchmark suite | 🔴 | `src/agentworld/apps/evaluation/benchmarks.py` | `pytest tests/apps/test_benchmarks.py` | |
-| Regression detection | 🔴 | `src/agentworld/apps/evaluation/regression.py` | `pytest tests/apps/test_regression.py` | |
-| Evaluation API routes | 🔴 | `src/agentworld/api/routes/evaluation.py` | `pytest tests/api/test_evaluation.py` | |
-| Benchmark app: counter | 🔴 | `data/benchmarks/bench_counter.yaml` | Loads and runs | |
-| Benchmark app: wallet | 🔴 | `data/benchmarks/bench_wallet.yaml` | Loads and runs | |
-| Benchmark app: inventory | 🔴 | `data/benchmarks/bench_inventory.yaml` | Loads and runs | |
-| Benchmark scenarios | 🔴 | `data/benchmarks/scenarios/*.yaml` | All scenarios pass | |
+| TaskDefinitionModel | 🟢 | `src/agentworld/persistence/models.py` | `pytest tests/persistence/` | Task definitions with ground truth |
+| TaskSetModel | 🟢 | `src/agentworld/persistence/models.py` | `pytest tests/persistence/` | Benchmark task sets |
+| TrialResultModel | 🟢 | `src/agentworld/persistence/models.py` | `pytest tests/persistence/` | Individual trial outcomes |
+| PassKMetricsModel | 🟢 | `src/agentworld/persistence/models.py` | `pytest tests/persistence/` | Aggregated pass^k scores |
+| FaultClassificationModel | 🟢 | `src/agentworld/persistence/models.py` | `pytest tests/persistence/` | Failure categorization |
+| PolicyRuleModel | 🟢 | `src/agentworld/persistence/models.py` | `pytest tests/persistence/` | Compliance rules |
+
+#### Tasks Module
+
+| Component | Status | File(s) | Verification | Notes |
+|-----------|--------|---------|--------------|-------|
+| Task definitions | 🟢 | `src/agentworld/tasks/definitions.py` | `pytest tests/tasks/` | TaskDefinition, TaskSet, TrialResult, PassKMetrics, etc. |
+| Task runner | 🟢 | `src/agentworld/tasks/runner.py` | `pytest tests/tasks/` | TaskRunner for execution |
+| Task repository | 🟢 | `src/agentworld/tasks/repository.py` | `pytest tests/tasks/` | CRUD operations |
+| Tasks module init | 🟢 | `src/agentworld/tasks/__init__.py` | Import test | All exports |
+
+#### Evaluation Extensions
+
+| Component | Status | File(s) | Verification | Notes |
+|-----------|--------|---------|--------------|-------|
+| Pass^k reliability | 🟢 | `src/agentworld/evaluation/reliability.py` | `pytest tests/evaluation/` | compute_pass_k, BenchmarkMetrics |
+| State verification | 🟢 | `src/agentworld/evaluation/state_verification.py` | `pytest tests/evaluation/` | verify_goal_state, StateDiff |
+| Fault classifier | 🟢 | `src/agentworld/evaluation/fault_classifier.py` | `pytest tests/evaluation/` | FaultClassifier, FaultSummary |
+| Policy engine | 🟢 | `src/agentworld/evaluation/policy_engine.py` | `pytest tests/evaluation/` | PolicyEngine, check_trajectory_compliance |
+| Evaluation exports | 🟢 | `src/agentworld/evaluation/__init__.py` | Import test | Updated with ADR-020 exports |
+
+#### API Layer
+
+| Component | Status | File(s) | Verification | Notes |
+|-----------|--------|---------|--------------|-------|
+| Task API schemas | 🟢 | `src/agentworld/api/schemas/tasks.py` | `pytest tests/api/` | Request/Response models |
+| Task API routes | 🟢 | `src/agentworld/api/routes/tasks.py` | `pytest tests/api/` | CRUD + evaluation endpoints |
+
+#### Built-in Scenarios
+
+| Component | Status | File(s) | Verification | Notes |
+|-----------|--------|---------|--------------|-------|
+| Scenarios init | 🟢 | `src/agentworld/tasks/scenarios/__init__.py` | Import test | get_all_scenarios() |
+| Payment scenarios | 🟢 | `src/agentworld/tasks/scenarios/payment.py` | `pytest tests/tasks/` | 8 tasks: transfer, balance, multi-party, etc. |
+| Shopping scenarios | 🟢 | `src/agentworld/tasks/scenarios/shopping.py` | `pytest tests/tasks/` | 9 tasks: search, cart, checkout, etc. |
 
 ### Phase 10f Exit Criteria
 
 ```markdown
-- [ ] Quality scoring returns scores for all 6 dimensions
-- [ ] Suggestions generated for low-scoring apps
-- [ ] Scenario parser loads YAML scenarios
-- [ ] Scenario runner executes all steps
-- [ ] Assertions verified at end of scenario
-- [ ] Agent evaluation tracks success rate and efficiency
-- [ ] Benchmark apps (counter, wallet, inventory) all pass
-- [ ] Regression detection identifies breaking changes
-- [ ] Evaluation API endpoints work
-- [ ] `pytest tests/apps/test_quality.py` all pass
-- [ ] `pytest tests/apps/test_scenarios.py` all pass
+- [x] Pass^k metric correctly computed from trial results
+- [x] State verification catches all state mismatches
+- [x] Fault classifier categorizes failures by assignment and type
+- [x] Policy engine detects policy violations
+- [x] TaskDefinition with ground truth for evaluation
+- [x] TaskRunner executes tasks and captures trial results
+- [x] TaskRepository handles CRUD operations
+- [x] API endpoints for tasks, evaluation, and policies
+- [x] Payment benchmark suite (8 predefined tasks)
+- [x] Shopping benchmark suite (9 predefined tasks)
+- [x] Integration with existing ADR-010 evaluation system
+```
+
+---
+
+## Phase 10g: App Benchmark & Evaluation Framework
+
+**Goal:** Quality scoring and test scenario framework for app definitions
+**Exit Criteria:** Apps can be scored on quality dimensions, tested via YAML scenarios, and benchmarked against reference implementations
+**Status:** 🟢 Complete
+**Depends On:** Phase 10a (Backend Core), Phase 10f (τ-bench)
+**ADRs:** ADR-021
+
+> **Note:** This phase implements app-specific evaluation patterns that complement
+> ADR-020's τ-bench task evaluation. It focuses on app definition quality and
+> functional testing rather than agent task completion.
+
+### ADR-021: App Benchmark & Evaluation Framework
+
+#### Quality Metrics Module
+
+| Component | Status | File(s) | Verification | Notes |
+|-----------|--------|---------|--------------|-------|
+| QualityReport dataclass | 🟢 | `src/agentworld/apps/evaluation/quality.py` | Import test | Overall score + dimension breakdown |
+| QualitySuggestion dataclass | 🟢 | `src/agentworld/apps/evaluation/quality.py` | Import test | Improvement suggestions |
+| score_completeness() | 🟢 | `src/agentworld/apps/evaluation/quality.py` | `pytest tests/apps/` | 25% weight - required fields, actions, state |
+| score_documentation() | 🟢 | `src/agentworld/apps/evaluation/quality.py` | `pytest tests/apps/` | 20% weight - descriptions, param docs |
+| score_validation() | 🟢 | `src/agentworld/apps/evaluation/quality.py` | `pytest tests/apps/` | 20% weight - param constraints |
+| score_error_handling() | 🟢 | `src/agentworld/apps/evaluation/quality.py` | `pytest tests/apps/` | 15% weight - error blocks in logic |
+| score_state_safety() | 🟢 | `src/agentworld/apps/evaluation/quality.py` | `pytest tests/apps/` | 10% weight - validation before updates |
+| score_consistency() | 🟢 | `src/agentworld/apps/evaluation/quality.py` | `pytest tests/apps/` | 10% weight - naming conventions |
+| calculate_quality_score() | 🟢 | `src/agentworld/apps/evaluation/quality.py` | `pytest tests/apps/` | Main scoring function |
+| get_quality_level() | 🟢 | `src/agentworld/apps/evaluation/quality.py` | `pytest tests/apps/` | Poor/Fair/Good/Excellent |
+
+#### Test Scenario Runner
+
+| Component | Status | File(s) | Verification | Notes |
+|-----------|--------|---------|--------------|-------|
+| TestScenario dataclass | 🟢 | `src/agentworld/apps/evaluation/scenarios.py` | Import test | Scenario definition |
+| TestStep dataclass | 🟢 | `src/agentworld/apps/evaluation/scenarios.py` | Import test | Individual test step |
+| StepExpectation dataclass | 🟢 | `src/agentworld/apps/evaluation/scenarios.py` | Import test | Expected outcomes |
+| ScenarioResult dataclass | 🟢 | `src/agentworld/apps/evaluation/scenarios.py` | Import test | Run result |
+| StepResult dataclass | 🟢 | `src/agentworld/apps/evaluation/scenarios.py` | Import test | Per-step result |
+| StepFailure dataclass | 🟢 | `src/agentworld/apps/evaluation/scenarios.py` | Import test | Failure details |
+| ScenarioRunner class | 🟢 | `src/agentworld/apps/evaluation/scenarios.py` | `pytest tests/apps/` | Executes scenarios against apps |
+| parse_scenario_yaml() | 🟢 | `src/agentworld/apps/evaluation/scenarios.py` | `pytest tests/apps/` | YAML parser |
+| State chaining | 🟢 | `src/agentworld/apps/evaluation/scenarios.py` | `pytest tests/apps/` | Steps inherit state from previous |
+| Final assertions | 🟢 | `src/agentworld/apps/evaluation/scenarios.py` | `pytest tests/apps/` | Verify final state |
+
+#### Benchmark Apps
+
+| Component | Status | File(s) | Verification | Notes |
+|-----------|--------|---------|--------------|-------|
+| BenchmarkResult dataclass | 🟢 | `src/agentworld/apps/evaluation/benchmarks.py` | Import test | Benchmark run result |
+| BenchmarkSuite class | 🟢 | `src/agentworld/apps/evaluation/benchmarks.py` | Import test | Runs benchmarks |
+| bench_counter app | 🟢 | `src/agentworld/apps/evaluation/benchmarks.py` | `pytest tests/apps/` | 3 actions: increment, decrement, reset |
+| bench_wallet app | 🟢 | `src/agentworld/apps/evaluation/benchmarks.py` | `pytest tests/apps/` | 3 actions: deposit, withdraw, transfer |
+| bench_inventory app | 🟢 | `src/agentworld/apps/evaluation/benchmarks.py` | `pytest tests/apps/` | 4 actions: add, remove, move, check |
+| bench_messaging app | 🟢 | `src/agentworld/apps/evaluation/benchmarks.py` | `pytest tests/apps/` | 3 actions: send, read, delete |
+| bench_workflow app | 🟢 | `src/agentworld/apps/evaluation/benchmarks.py` | `pytest tests/apps/` | 4 actions: submit, approve, reject, cancel |
+| get_benchmark_apps() | 🟢 | `src/agentworld/apps/evaluation/benchmarks.py` | `pytest tests/apps/` | Lists all benchmark apps |
+| run_benchmark() | 🟢 | `src/agentworld/apps/evaluation/benchmarks.py` | `pytest tests/apps/` | Runs benchmark suite |
+
+#### API Endpoints
+
+| Component | Status | File(s) | Verification | Notes |
+|-----------|--------|---------|--------------|-------|
+| GET /app-definitions/{id}/quality | 🟢 | `src/agentworld/api/routes/app_definitions.py` | `pytest tests/api/` | Quality scoring |
+| POST /app-definitions/{id}/evaluate | 🟢 | `src/agentworld/api/routes/app_definitions.py` | `pytest tests/api/` | Run test scenarios |
+| POST /app-definitions/{id}/benchmark | 🟢 | `src/agentworld/api/routes/app_definitions.py` | `pytest tests/api/` | Run benchmarks |
+| GET /benchmarks | 🟢 | `src/agentworld/api/routes/app_definitions.py` | `pytest tests/api/` | List benchmark apps |
+| GET /benchmarks/{id} | 🟢 | `src/agentworld/api/routes/app_definitions.py` | `pytest tests/api/` | Get benchmark app |
+
+#### Module Exports
+
+| Component | Status | File(s) | Verification | Notes |
+|-----------|--------|---------|--------------|-------|
+| apps.evaluation __init__ | 🟢 | `src/agentworld/apps/evaluation/__init__.py` | Import test | All exports |
+
+### Phase 10g Exit Criteria
+
+```markdown
+- [x] Quality scoring with 6 dimensions (completeness, documentation, validation, error handling, state safety, consistency)
+- [x] Quality level classification (Poor < 50%, Fair < 70%, Good < 85%, Excellent >= 85%)
+- [x] Improvement suggestions generated from quality analysis
+- [x] YAML test scenario parser
+- [x] ScenarioRunner executes scenarios against DynamicApp instances
+- [x] State chaining between test steps
+- [x] Final state assertions
+- [x] 5 benchmark apps (counter, wallet, inventory, messaging, workflow)
+- [x] API endpoints for quality, evaluate, benchmark
+- [x] Module exports in apps.evaluation
 ```
 
 ---
@@ -1871,6 +1995,9 @@ if __name__ == "__main__":
 | 2026-01-22 | 7+ | ADR-017 Simulated Apps Framework complete - SimulatedAppPlugin protocol, PayPal app (6 actions), action parser, SimulationAppManager, persistence models, API endpoints (6), WebSocket events (5), checkpoint integration, tests (PayPal unit, parser unit, integration), example config | Claude |
 | 2026-01-22 | - | Auto-tracked: ADR-008, ADR-009, ADR-011, ADR-012 (10 files modified) | Hook |
 | 2026-01-23 | - | Auto-tracked: ADR-008, ADR-012 (6 files modified) | Hook |
+| 2026-01-26 | - | Auto-tracked: ADR-009, ADR-011, ADR-012 (4 files modified) | Hook |
+| 2026-01-27 | - | Auto-tracked: ADR-012 (3 files modified) | Hook |
+| 2026-01-27 | 10g | ADR-021 App Benchmark Evaluation complete - quality.py (6 scoring dimensions), scenarios.py (YAML runner), benchmarks.py (5 benchmark apps), API endpoints (quality, evaluate, benchmark). Complements ADR-020 τ-bench for app-specific evaluation | Claude |
 
 ---
 

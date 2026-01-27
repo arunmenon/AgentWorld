@@ -452,3 +452,211 @@ async def test_app_action(definition_id: str, request: TestActionRequest):
             for obs in observations
         ],
     )
+
+
+# ==============================================================================
+# Quality & Evaluation Endpoints (ADR-021)
+# ==============================================================================
+
+
+@router.get("/app-definitions/{definition_id}/quality")
+async def get_app_quality(definition_id: str):
+    """Get quality score for an app definition.
+
+    Evaluates the app across six dimensions:
+    - Completeness (25%): Required fields populated
+    - Documentation (20%): Actions have descriptions
+    - Validation (20%): Actions validate inputs
+    - Error Handling (15%): Logic handles error cases
+    - State Safety (10%): No unbounded state growth
+    - Consistency (10%): Naming conventions followed
+
+    Returns quality report with scores and improvement suggestions.
+    """
+    from agentworld.apps.evaluation.quality import calculate_quality_score
+
+    repo = get_repo()
+
+    # Get definition
+    definition = repo.get_app_definition(definition_id)
+    if not definition:
+        raise HTTPException(status_code=404, detail={
+            "code": "DEFINITION_NOT_FOUND",
+            "message": f"App definition '{definition_id}' not found",
+        })
+
+    # Get the full definition JSON
+    full_def = definition.get("definition", {})
+
+    # Calculate quality score
+    report = calculate_quality_score(full_def)
+
+    return report.to_dict()
+
+
+@router.post("/app-definitions/{definition_id}/evaluate")
+async def evaluate_app(
+    definition_id: str,
+    scenario_yaml: str | None = None,
+):
+    """Run test scenarios against an app definition.
+
+    If scenario_yaml is provided, runs that scenario.
+    Otherwise, runs default validation checks.
+
+    Args:
+        definition_id: App definition ID
+        scenario_yaml: Optional YAML scenario content
+
+    Returns:
+        Evaluation results including scenario pass/fail
+    """
+    from agentworld.apps.evaluation.scenarios import (
+        parse_scenario_yaml,
+        ScenarioRunner,
+    )
+
+    repo = get_repo()
+
+    # Get definition
+    definition = repo.get_app_definition(definition_id)
+    if not definition:
+        raise HTTPException(status_code=404, detail={
+            "code": "DEFINITION_NOT_FOUND",
+            "message": f"App definition '{definition_id}' not found",
+        })
+
+    # Parse definition and create dynamic app
+    try:
+        full_def = definition.get("definition", {})
+        app_def = AppDefinition.from_dict(full_def)
+        app = DynamicApp(app_def)
+    except Exception as e:
+        raise HTTPException(status_code=400, detail={
+            "code": "INVALID_DEFINITION",
+            "message": f"Failed to load app definition: {str(e)}",
+        })
+
+    results = {
+        "app_id": app_def.app_id,
+        "scenarios_run": 0,
+        "scenarios_passed": 0,
+        "scenario_results": [],
+    }
+
+    if scenario_yaml:
+        # Parse and run the provided scenario
+        try:
+            scenario = parse_scenario_yaml(scenario_yaml)
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail={
+                "code": "INVALID_SCENARIO",
+                "message": str(e),
+            })
+
+        runner = ScenarioRunner(app)
+        result = await runner.run_scenario(scenario)
+
+        results["scenarios_run"] = 1
+        results["scenarios_passed"] = 1 if result.passed else 0
+        results["scenario_results"].append(result.to_dict())
+    else:
+        # Return quality report as default evaluation
+        from agentworld.apps.evaluation.quality import calculate_quality_score
+        quality = calculate_quality_score(full_def)
+        results["quality"] = quality.to_dict()
+
+    return results
+
+
+@router.post("/app-definitions/{definition_id}/benchmark")
+async def run_app_benchmark(
+    definition_id: str,
+    benchmark_name: str = "default",
+    iterations: int = 10,
+):
+    """Run benchmark suite against an app definition.
+
+    Args:
+        definition_id: App definition ID
+        benchmark_name: Which benchmark to run
+        iterations: Number of iterations for performance testing
+
+    Returns:
+        Benchmark results with performance and quality metrics
+    """
+    from agentworld.apps.evaluation.benchmarks import run_benchmark
+
+    repo = get_repo()
+
+    # Get definition
+    definition = repo.get_app_definition(definition_id)
+    if not definition:
+        raise HTTPException(status_code=404, detail={
+            "code": "DEFINITION_NOT_FOUND",
+            "message": f"App definition '{definition_id}' not found",
+        })
+
+    # Parse definition and create dynamic app
+    try:
+        full_def = definition.get("definition", {})
+        app_def = AppDefinition.from_dict(full_def)
+        app = DynamicApp(app_def)
+    except Exception as e:
+        raise HTTPException(status_code=400, detail={
+            "code": "INVALID_DEFINITION",
+            "message": f"Failed to load app definition: {str(e)}",
+        })
+
+    # Run benchmark
+    result = await run_benchmark(benchmark_name, app, iterations)
+
+    return result.to_dict()
+
+
+@router.get("/benchmarks")
+async def list_benchmarks():
+    """List available benchmark apps.
+
+    Returns the standard benchmark app definitions that can be used
+    for comparing app implementations.
+    """
+    from agentworld.apps.evaluation.benchmarks import get_benchmark_apps
+
+    apps = get_benchmark_apps()
+
+    return {
+        "benchmarks": [
+            {
+                "app_id": app_id,
+                "name": app_def.get("name", app_id),
+                "description": app_def.get("description", ""),
+                "category": app_def.get("category", "custom"),
+                "actions_count": len(app_def.get("actions", [])),
+            }
+            for app_id, app_def in apps.items()
+        ],
+        "total": len(apps),
+    }
+
+
+@router.get("/benchmarks/{benchmark_id}")
+async def get_benchmark(benchmark_id: str):
+    """Get a specific benchmark app definition.
+
+    Args:
+        benchmark_id: Benchmark app ID (e.g., 'bench_wallet')
+
+    Returns:
+        Full benchmark app definition
+    """
+    from agentworld.apps.evaluation.benchmarks import get_benchmark_app
+
+    app_def = get_benchmark_app(benchmark_id)
+    if not app_def:
+        raise HTTPException(status_code=404, detail={
+            "code": "BENCHMARK_NOT_FOUND",
+            "message": f"Benchmark '{benchmark_id}' not found",
+        })
+
+    return app_def

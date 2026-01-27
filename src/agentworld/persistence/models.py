@@ -1251,3 +1251,405 @@ class AppDefinitionVersionModel(Base):
             version=data["version"],
             definition_json=json.dumps(definition),
         )
+
+
+# =============================================================================
+# ADR-020: τ-bench Inspired Evaluation Framework Models
+# =============================================================================
+
+
+class TaskDefinitionModel(Base):
+    """Database model for task definitions with ground truth.
+
+    Stores task definitions for reliability evaluation per ADR-020.
+    Tasks include expected outcomes for pass/fail determination.
+    """
+
+    __tablename__ = "task_definitions"
+
+    id = Column(String(36), primary_key=True)
+    task_id = Column(String(100), nullable=False, unique=True, index=True)
+    name = Column(String(255), nullable=False)
+    description = Column(Text, nullable=True)
+    domain = Column(String(50), nullable=False, index=True)  # payment, shopping, etc.
+    difficulty = Column(String(20), nullable=False)  # easy, medium, hard
+
+    # Simulation configuration
+    simulation_config_json = Column(Text, nullable=False)  # SimulationConfig as JSON
+
+    # Initial conditions
+    initial_app_states_json = Column(Text, nullable=True)  # {app_id: {agent_id: state}}
+
+    # Agent instruction (what the agent should accomplish)
+    agent_instruction = Column(Text, nullable=False)
+
+    # Ground truth for verification
+    expected_final_states_json = Column(Text, nullable=False)  # {app_id: {agent_id: expected}}
+    expected_actions_json = Column(Text, nullable=True)  # List of expected actions
+    required_outputs_json = Column(Text, nullable=True)  # Required strings in responses
+
+    # Policy rules for compliance checking
+    policy_rules_json = Column(Text, nullable=True)  # List of policy rule IDs
+
+    # Metadata
+    estimated_steps = Column(Integer, nullable=True)
+    tags_json = Column(Text, nullable=True)
+    is_active = Column(Integer, default=1, nullable=False, index=True)
+
+    created_at = Column(DateTime, default=_utc_now)
+    updated_at = Column(DateTime, default=_utc_now, onupdate=_utc_now)
+
+    def to_dict(self) -> dict[str, Any]:
+        """Convert to dictionary."""
+        return {
+            "id": self.id,
+            "task_id": self.task_id,
+            "name": self.name,
+            "description": self.description,
+            "domain": self.domain,
+            "difficulty": self.difficulty,
+            "simulation_config": json.loads(self.simulation_config_json) if self.simulation_config_json else {},
+            "initial_app_states": json.loads(self.initial_app_states_json) if self.initial_app_states_json else {},
+            "agent_instruction": self.agent_instruction,
+            "expected_final_states": json.loads(self.expected_final_states_json) if self.expected_final_states_json else {},
+            "expected_actions": json.loads(self.expected_actions_json) if self.expected_actions_json else [],
+            "required_outputs": json.loads(self.required_outputs_json) if self.required_outputs_json else [],
+            "policy_rules": json.loads(self.policy_rules_json) if self.policy_rules_json else [],
+            "estimated_steps": self.estimated_steps,
+            "tags": json.loads(self.tags_json) if self.tags_json else [],
+            "is_active": bool(self.is_active),
+            "created_at": self.created_at.isoformat() if self.created_at else None,
+            "updated_at": self.updated_at.isoformat() if self.updated_at else None,
+        }
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> "TaskDefinitionModel":
+        """Create from dictionary."""
+        return cls(
+            id=data["id"],
+            task_id=data["task_id"],
+            name=data["name"],
+            description=data.get("description"),
+            domain=data["domain"],
+            difficulty=data["difficulty"],
+            simulation_config_json=json.dumps(data.get("simulation_config", {})),
+            initial_app_states_json=json.dumps(data.get("initial_app_states", {})),
+            agent_instruction=data["agent_instruction"],
+            expected_final_states_json=json.dumps(data.get("expected_final_states", {})),
+            expected_actions_json=json.dumps(data.get("expected_actions", [])),
+            required_outputs_json=json.dumps(data.get("required_outputs", [])),
+            policy_rules_json=json.dumps(data.get("policy_rules", [])),
+            estimated_steps=data.get("estimated_steps"),
+            tags_json=json.dumps(data.get("tags", [])),
+            is_active=int(data.get("is_active", True)),
+        )
+
+
+class TaskSetModel(Base):
+    """Database model for task sets (benchmarks).
+
+    Groups multiple tasks for batch evaluation per ADR-020.
+    """
+
+    __tablename__ = "task_sets"
+
+    id = Column(String(36), primary_key=True)
+    name = Column(String(255), nullable=False, unique=True)
+    description = Column(Text, nullable=True)
+    domain = Column(String(50), nullable=True, index=True)  # Optional domain filter
+    task_ids_json = Column(Text, nullable=False)  # List of task_ids
+
+    created_at = Column(DateTime, default=_utc_now)
+    updated_at = Column(DateTime, default=_utc_now, onupdate=_utc_now)
+
+    def to_dict(self) -> dict[str, Any]:
+        """Convert to dictionary."""
+        return {
+            "id": self.id,
+            "name": self.name,
+            "description": self.description,
+            "domain": self.domain,
+            "task_ids": json.loads(self.task_ids_json) if self.task_ids_json else [],
+            "created_at": self.created_at.isoformat() if self.created_at else None,
+            "updated_at": self.updated_at.isoformat() if self.updated_at else None,
+        }
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> "TaskSetModel":
+        """Create from dictionary."""
+        return cls(
+            id=data["id"],
+            name=data["name"],
+            description=data.get("description"),
+            domain=data.get("domain"),
+            task_ids_json=json.dumps(data.get("task_ids", [])),
+        )
+
+
+class TrialResultModel(Base):
+    """Database model for individual trial results.
+
+    Stores results of each task execution trial per ADR-020.
+    """
+
+    __tablename__ = "trial_results"
+
+    id = Column(String(36), primary_key=True)
+    task_id = Column(String(100), nullable=False, index=True)
+    trial_number = Column(Integer, nullable=False)
+
+    # Success metrics
+    success = Column(Integer, nullable=False)  # Boolean: overall success
+    state_match = Column(Integer, nullable=True)  # Boolean: final state matches expected
+    output_match = Column(Integer, nullable=True)  # Boolean: required outputs present
+
+    # State hashes for quick comparison
+    final_state_hash = Column(String(64), nullable=True)
+    expected_state_hash = Column(String(64), nullable=True)
+
+    # Performance metrics
+    duration_seconds = Column(Float, nullable=True)
+    token_count = Column(Integer, nullable=True)
+    step_count = Column(Integer, nullable=True)
+
+    # Simulation reference
+    simulation_id = Column(String(8), ForeignKey("simulations.id"), nullable=True)
+
+    # Error tracking
+    error_message = Column(Text, nullable=True)
+
+    # Full trajectory for analysis
+    trajectory_json = Column(Text, nullable=True)  # List of actions taken
+
+    created_at = Column(DateTime, default=_utc_now)
+
+    # Relationships
+    simulation = relationship("SimulationModel")
+
+    def to_dict(self) -> dict[str, Any]:
+        """Convert to dictionary."""
+        return {
+            "id": self.id,
+            "task_id": self.task_id,
+            "trial_number": self.trial_number,
+            "success": bool(self.success),
+            "state_match": bool(self.state_match) if self.state_match is not None else None,
+            "output_match": bool(self.output_match) if self.output_match is not None else None,
+            "final_state_hash": self.final_state_hash,
+            "expected_state_hash": self.expected_state_hash,
+            "duration_seconds": self.duration_seconds,
+            "token_count": self.token_count,
+            "step_count": self.step_count,
+            "simulation_id": self.simulation_id,
+            "error_message": self.error_message,
+            "trajectory": json.loads(self.trajectory_json) if self.trajectory_json else [],
+            "created_at": self.created_at.isoformat() if self.created_at else None,
+        }
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> "TrialResultModel":
+        """Create from dictionary."""
+        return cls(
+            id=data["id"],
+            task_id=data["task_id"],
+            trial_number=data["trial_number"],
+            success=int(data.get("success", False)),
+            state_match=int(data["state_match"]) if data.get("state_match") is not None else None,
+            output_match=int(data["output_match"]) if data.get("output_match") is not None else None,
+            final_state_hash=data.get("final_state_hash"),
+            expected_state_hash=data.get("expected_state_hash"),
+            duration_seconds=data.get("duration_seconds"),
+            token_count=data.get("token_count"),
+            step_count=data.get("step_count"),
+            simulation_id=data.get("simulation_id"),
+            error_message=data.get("error_message"),
+            trajectory_json=json.dumps(data.get("trajectory", [])),
+        )
+
+
+class PassKMetricsModel(Base):
+    """Database model for aggregated pass^k metrics.
+
+    Stores computed reliability metrics per ADR-020.
+    """
+
+    __tablename__ = "pass_k_metrics"
+
+    id = Column(String(36), primary_key=True)
+    task_id = Column(String(100), nullable=False, index=True)
+
+    # Trial counts
+    total_trials = Column(Integer, nullable=False)
+    successful_trials = Column(Integer, nullable=False)
+
+    # Pass^k scores
+    pass_1 = Column(Float, nullable=True)
+    pass_2 = Column(Float, nullable=True)
+    pass_4 = Column(Float, nullable=True)
+    pass_8 = Column(Float, nullable=True)
+
+    # Additional metrics
+    mean_duration_seconds = Column(Float, nullable=True)
+    mean_token_count = Column(Float, nullable=True)
+
+    computed_at = Column(DateTime, default=_utc_now)
+
+    def to_dict(self) -> dict[str, Any]:
+        """Convert to dictionary."""
+        return {
+            "id": self.id,
+            "task_id": self.task_id,
+            "total_trials": self.total_trials,
+            "successful_trials": self.successful_trials,
+            "pass_1": self.pass_1,
+            "pass_2": self.pass_2,
+            "pass_4": self.pass_4,
+            "pass_8": self.pass_8,
+            "mean_duration_seconds": self.mean_duration_seconds,
+            "mean_token_count": self.mean_token_count,
+            "computed_at": self.computed_at.isoformat() if self.computed_at else None,
+        }
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> "PassKMetricsModel":
+        """Create from dictionary."""
+        return cls(
+            id=data["id"],
+            task_id=data["task_id"],
+            total_trials=data["total_trials"],
+            successful_trials=data["successful_trials"],
+            pass_1=data.get("pass_1"),
+            pass_2=data.get("pass_2"),
+            pass_4=data.get("pass_4"),
+            pass_8=data.get("pass_8"),
+            mean_duration_seconds=data.get("mean_duration_seconds"),
+            mean_token_count=data.get("mean_token_count"),
+        )
+
+
+class FaultClassificationModel(Base):
+    """Database model for fault classifications.
+
+    Stores categorized failure analysis per ADR-020.
+    """
+
+    __tablename__ = "fault_classifications"
+
+    id = Column(String(36), primary_key=True)
+    trial_id = Column(String(36), ForeignKey("trial_results.id"), nullable=False, index=True)
+    task_id = Column(String(100), nullable=False, index=True)
+
+    # Classification
+    fault_assignment = Column(String(50), nullable=False)  # agent, environment, task
+    fault_type = Column(String(100), nullable=False)  # specific error type
+
+    # Details
+    description = Column(Text, nullable=True)
+    evidence_json = Column(Text, nullable=True)  # Supporting evidence
+    violated_rules_json = Column(Text, nullable=True)  # For policy violations
+
+    # Classification method
+    classifier = Column(String(50), default="rule_based")  # rule_based, llm_based
+    confidence = Column(Float, default=1.0)
+
+    created_at = Column(DateTime, default=_utc_now)
+
+    # Relationships
+    trial = relationship("TrialResultModel")
+
+    def to_dict(self) -> dict[str, Any]:
+        """Convert to dictionary."""
+        return {
+            "id": self.id,
+            "trial_id": self.trial_id,
+            "task_id": self.task_id,
+            "fault_assignment": self.fault_assignment,
+            "fault_type": self.fault_type,
+            "description": self.description,
+            "evidence": json.loads(self.evidence_json) if self.evidence_json else [],
+            "violated_rules": json.loads(self.violated_rules_json) if self.violated_rules_json else [],
+            "classifier": self.classifier,
+            "confidence": self.confidence,
+            "created_at": self.created_at.isoformat() if self.created_at else None,
+        }
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> "FaultClassificationModel":
+        """Create from dictionary."""
+        return cls(
+            id=data["id"],
+            trial_id=data["trial_id"],
+            task_id=data["task_id"],
+            fault_assignment=data["fault_assignment"],
+            fault_type=data["fault_type"],
+            description=data.get("description"),
+            evidence_json=json.dumps(data.get("evidence", [])),
+            violated_rules_json=json.dumps(data.get("violated_rules", [])),
+            classifier=data.get("classifier", "rule_based"),
+            confidence=data.get("confidence", 1.0),
+        )
+
+
+class PolicyRuleModel(Base):
+    """Database model for policy rules.
+
+    Stores rules that agents must follow per ADR-020.
+    """
+
+    __tablename__ = "policy_rules"
+
+    id = Column(String(36), primary_key=True)
+    rule_id = Column(String(100), nullable=False, unique=True, index=True)
+    name = Column(String(255), nullable=False)
+    description = Column(Text, nullable=True)
+    category = Column(String(50), nullable=False)  # confirmation, limit, eligibility, prohibition
+
+    # Domain applicability
+    domain = Column(String(50), nullable=True, index=True)  # payment, shopping, etc.
+
+    # Rule configuration
+    trigger_actions_json = Column(Text, nullable=True)  # Actions that trigger this rule
+    conditions_json = Column(Text, nullable=True)  # Additional conditions
+    requirements_json = Column(Text, nullable=True)  # What must happen
+
+    # Severity
+    severity = Column(String(20), default="error")  # error, warning
+
+    is_active = Column(Integer, default=1, nullable=False, index=True)
+    created_at = Column(DateTime, default=_utc_now)
+    updated_at = Column(DateTime, default=_utc_now, onupdate=_utc_now)
+
+    def to_dict(self) -> dict[str, Any]:
+        """Convert to dictionary."""
+        return {
+            "id": self.id,
+            "rule_id": self.rule_id,
+            "name": self.name,
+            "description": self.description,
+            "category": self.category,
+            "domain": self.domain,
+            "trigger_actions": json.loads(self.trigger_actions_json) if self.trigger_actions_json else [],
+            "conditions": json.loads(self.conditions_json) if self.conditions_json else [],
+            "requirements": json.loads(self.requirements_json) if self.requirements_json else [],
+            "severity": self.severity,
+            "is_active": bool(self.is_active),
+            "created_at": self.created_at.isoformat() if self.created_at else None,
+            "updated_at": self.updated_at.isoformat() if self.updated_at else None,
+        }
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> "PolicyRuleModel":
+        """Create from dictionary."""
+        return cls(
+            id=data["id"],
+            rule_id=data["rule_id"],
+            name=data["name"],
+            description=data.get("description"),
+            category=data["category"],
+            domain=data.get("domain"),
+            trigger_actions_json=json.dumps(data.get("trigger_actions", [])),
+            conditions_json=json.dumps(data.get("conditions", [])),
+            requirements_json=json.dumps(data.get("requirements", [])),
+            severity=data.get("severity", "error"),
+            is_active=int(data.get("is_active", True)),
+        )

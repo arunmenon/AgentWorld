@@ -8,7 +8,9 @@ from agentworld.api.routes import (
     health,
     evaluation,
     export,
+    apps,
     app_definitions,
+    tasks,
 )
 
 __all__ = [
@@ -19,5 +21,7 @@ __all__ = [
     "health",
     "evaluation",
     "export",
+    "apps",
     "app_definitions",
+    "tasks",
 ]
