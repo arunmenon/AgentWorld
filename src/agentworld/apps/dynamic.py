@@ -290,11 +290,11 @@ class DynamicApp(BaseSimulatedApp):
         # Execute logic
         result = await self._logic_engine.execute(action_def.logic, context)
 
-        # Collect observations
+        # Collect observations as (to_agent, observation) tuples
         observations = []
         for to_agent, observation in context.observations:
             observation.app_id = self.app_id
-            observations.append(observation)
+            observations.append((to_agent, observation))
 
         return result, working_state, observations
 

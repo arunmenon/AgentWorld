@@ -444,12 +444,12 @@ async def test_app_action(definition_id: str, request: TestActionRequest):
         state_after=state_after.to_dict(),
         observations=[
             {
-                "agent_id": obs.agent_id,
+                "agent_id": to_agent,
                 "message": obs.message,
                 "data": obs.data,
                 "priority": obs.priority,
             }
-            for obs in observations
+            for to_agent, obs in observations
         ],
     )
 
