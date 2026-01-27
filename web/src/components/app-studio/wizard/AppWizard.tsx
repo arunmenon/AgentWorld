@@ -376,6 +376,7 @@ export function AppWizard({ existingApp }: AppWizardProps) {
             actions={state.actions}
             stateSchema={state.state_schema}
             initialConfig={state.initial_config}
+            definitionId={existingApp?.id}
           />
         )}
       </div>

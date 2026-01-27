@@ -1,13 +1,15 @@
 import { useState } from 'react'
-import { Play, RotateCcw, CheckCircle, XCircle, ChevronDown, ChevronUp } from 'lucide-react'
+import { Play, RotateCcw, CheckCircle, XCircle, ChevronDown, ChevronUp, Loader2 } from 'lucide-react'
 import { Button, Card, Input, Label, Badge } from '@/components/ui'
 import { cn } from '@/lib/utils'
+import { api } from '@/lib/api'
 import type { ActionDefinition, ParamSpec, StateField } from '@/lib/api'
 
 interface TestStepProps {
   actions: ActionDefinition[]
   stateSchema: StateField[]
   initialConfig: Record<string, unknown>
+  definitionId?: string
 }
 
 interface TestAgent {
@@ -59,53 +61,19 @@ function getDefaultForType(type: string): unknown {
   }
 }
 
-// Simulated action execution
-function executeAction(
-  action: ActionDefinition,
-  _agent: TestAgent,
-  _params: Record<string, unknown>,
-  _allAgents: TestAgent[]
-): { success: boolean; result: unknown; error?: string; stateChanges: ExecutionLogEntry['stateChanges'] } {
-  const stateChanges: ExecutionLogEntry['stateChanges'] = []
-
-  // Simulate execution based on action logic
-  // For now, just return success with mock data
-  try {
-    // Generate mock return values based on action.returns
-    const result: Record<string, unknown> = {}
-    if (action.returns) {
-      for (const [key, type] of Object.entries(action.returns)) {
-        switch (type) {
-          case 'string':
-            result[key] = `mock_${key}_${Date.now()}`
-            break
-          case 'number':
-            result[key] = Math.floor(Math.random() * 1000)
-            break
-          case 'boolean':
-            result[key] = true
-            break
-          case 'array':
-            result[key] = []
-            break
-          default:
-            result[key] = null
-        }
-      }
-    }
-
-    return { success: true, result, stateChanges }
-  } catch (err) {
-    return {
-      success: false,
-      result: null,
-      error: err instanceof Error ? err.message : 'Unknown error',
-      stateChanges,
-    }
+// Build state object for API call
+function buildStateForApi(agents: TestAgent[]): {
+  per_agent: Record<string, Record<string, unknown>>
+  shared: Record<string, unknown>
+} {
+  const per_agent: Record<string, Record<string, unknown>> = {}
+  for (const agent of agents) {
+    per_agent[agent.id] = { ...agent.state }
   }
+  return { per_agent, shared: {} }
 }
 
-export function TestStep({ actions, stateSchema }: TestStepProps) {
+export function TestStep({ actions, stateSchema, definitionId }: TestStepProps) {
   // Test agents
   const [agents, setAgents] = useState<TestAgent[]>(() => [
     { id: 'alice', name: 'Alice', state: initializeAgentState(stateSchema) },
@@ -125,6 +93,7 @@ export function TestStep({ actions, stateSchema }: TestStepProps) {
     result: unknown
     error?: string
   } | null>(null)
+  const [isExecuting, setIsExecuting] = useState(false)
 
   const selectedAgent = agents.find((a) => a.id === selectedAgentId)
   const selectedAction = actions.find((a) => a.name === selectedActionName)
@@ -135,27 +104,86 @@ export function TestStep({ actions, stateSchema }: TestStepProps) {
     setParamValues({})
   }
 
-  // Execute action
-  const handleExecute = () => {
+  // Execute action via API
+  const handleExecute = async () => {
     if (!selectedAgent || !selectedAction) return
 
-    const result = executeAction(selectedAction, selectedAgent, paramValues, agents)
-    setLastResult(result)
-
-    // Add to log
-    const logEntry: ExecutionLogEntry = {
-      id: `${Date.now()}`,
-      timestamp: new Date().toLocaleTimeString(),
-      agentId: selectedAgent.id,
-      agentName: selectedAgent.name,
-      action: selectedAction.name,
-      params: { ...paramValues },
-      success: result.success,
-      result: result.result,
-      error: result.error,
-      stateChanges: result.stateChanges,
+    // If no definitionId, we can't make API calls - show warning
+    if (!definitionId) {
+      setLastResult({
+        success: false,
+        result: null,
+        error: 'Save the app first to enable testing',
+      })
+      return
     }
-    setExecutionLog((prev) => [logEntry, ...prev])
+
+    setIsExecuting(true)
+    const stateChanges: ExecutionLogEntry['stateChanges'] = []
+
+    try {
+      const response = await api.testAppDefinition(definitionId, {
+        action: selectedAction.name,
+        agent_id: selectedAgent.id,
+        params: paramValues,
+        state: buildStateForApi(agents),
+      })
+
+      // Calculate state changes for logging
+      if (response.state_after) {
+        for (const [agentId, newState] of Object.entries(response.state_after.per_agent || {})) {
+          const agent = agents.find(a => a.id === agentId)
+          const oldState = agent?.state || {}
+          for (const [field, newValue] of Object.entries(newState)) {
+            const oldValue = oldState[field]
+            if (JSON.stringify(oldValue) !== JSON.stringify(newValue)) {
+              stateChanges.push({
+                agent: agentId,
+                field,
+                oldValue,
+                newValue,
+              })
+            }
+          }
+        }
+
+        // Update agent states from API response
+        setAgents(prev => prev.map(agent => ({
+          ...agent,
+          state: response.state_after.per_agent[agent.id] || agent.state,
+        })))
+      }
+
+      setLastResult({
+        success: response.success,
+        result: response.data || response.error,
+        error: response.error,
+      })
+
+      // Add to log
+      const logEntry: ExecutionLogEntry = {
+        id: `${Date.now()}`,
+        timestamp: new Date().toLocaleTimeString(),
+        agentId: selectedAgent.id,
+        agentName: selectedAgent.name,
+        action: selectedAction.name,
+        params: { ...paramValues },
+        success: response.success,
+        result: response.data,
+        error: response.error,
+        stateChanges,
+      }
+      setExecutionLog((prev) => [logEntry, ...prev])
+    } catch (err) {
+      const errorMsg = err instanceof Error ? err.message : 'Unknown error'
+      setLastResult({
+        success: false,
+        result: null,
+        error: errorMsg,
+      })
+    } finally {
+      setIsExecuting(false)
+    }
   }
 
   // Reset state
@@ -190,6 +218,14 @@ export function TestStep({ actions, stateSchema }: TestStepProps) {
 
   return (
     <div className="space-y-6">
+      {!definitionId && (
+        <div className="p-4 bg-warning/10 border border-warning/30 rounded-lg">
+          <p className="text-sm text-warning-foreground">
+            <strong>Note:</strong> Save the app first to enable live testing with the backend.
+            Currently showing mock testing only.
+          </p>
+        </div>
+      )}
       <div className="flex items-center justify-between">
         <div>
           <h2 className="text-xl font-semibold">Test Your App</h2>
@@ -273,9 +309,13 @@ export function TestStep({ actions, stateSchema }: TestStepProps) {
           )}
 
           {/* Execute Button */}
-          <Button onClick={handleExecute} className="w-full">
-            <Play className="h-4 w-4 mr-2" />
-            Execute Action
+          <Button onClick={handleExecute} className="w-full" disabled={isExecuting}>
+            {isExecuting ? (
+              <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+            ) : (
+              <Play className="h-4 w-4 mr-2" />
+            )}
+            {isExecuting ? 'Executing...' : 'Execute Action'}
           </Button>
 
           {/* Last Result */}
