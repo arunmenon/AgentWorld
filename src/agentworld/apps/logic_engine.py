@@ -76,7 +76,7 @@ class ExecutionContext:
         Per ADR-019, context variables are:
         - params: Action parameters
         - agent: Calling agent's per-agent state (with id injected)
-        - agents: All agents' per-agent states
+        - agents: All agents' per-agent states (with name resolution)
         - shared: Shared state
         - config: App configuration
         """
@@ -87,7 +87,7 @@ class ExecutionContext:
         context = {
             "params": self.params,
             "agent": agent_state,
-            "agents": self.state.per_agent,
+            "agents": self.state.get_agents_proxy(),  # Use proxy for name resolution
             "shared": self.state.shared,
             "config": self.config,
         }
@@ -516,7 +516,9 @@ class LogicEngine:
                 agent_id = self._evaluator.evaluate(agent_id_expr[1], eval_context)
             else:
                 agent_id = agent_id_expr
-            obj = context.state.per_agent.setdefault(agent_id, {})
+            # Resolve agent name to ID if possible
+            resolved_id = context.state.resolve_agent_id(str(agent_id))
+            obj = context.state.per_agent.setdefault(resolved_id, {})
             parts = parts[2:]  # Skip "agents" and agent ID
         elif root_name == "shared":
             obj = context.state.shared

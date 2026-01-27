@@ -61,6 +61,7 @@ class SimulationAppManager:
         self,
         app_configs: list[dict[str, Any]],
         agent_ids: list[str],
+        agent_names: dict[str, str] | None = None,
     ) -> None:
         """Initialize apps for a simulation.
 
@@ -68,6 +69,7 @@ class SimulationAppManager:
             app_configs: List of app configurations from simulation config
                 Each should have 'id' (app_id) and optional 'config' dict
             agent_ids: List of agent IDs in the simulation
+            agent_names: Optional mapping of agent_id -> agent_name for name resolution
         """
         registry = get_app_registry()
 
@@ -90,6 +92,7 @@ class SimulationAppManager:
                     sim_id=self.simulation_id,
                     agents=agent_ids,
                     config=config,
+                    agent_names=agent_names,
                 )
                 self._apps[app_id] = app
 
@@ -383,9 +386,38 @@ class SimulationAppManager:
             "## Available Applications",
             "",
             "You have access to the following simulated applications. "
-            "To use them, include action directives in your messages:",
+            "**IMPORTANT:** To use them, you MUST include APP_ACTION directives in your messages.",
             "",
-            "Syntax: APP_ACTION: <app_id>.<action>(<params>)",
+            "### How to Use Apps",
+            "",
+            "Include directives on separate lines using this exact format:",
+            "```",
+            "APP_ACTION: <app_id>.<action>(<params>)",
+            "```",
+            "",
+            "**Examples:**",
+            "",
+            "To check your balance:",
+            "```",
+            "APP_ACTION: paypal.check_balance()",
+            "```",
+            "",
+            "To transfer $50 to Bob:",
+            "```",
+            'APP_ACTION: paypal.transfer(to="bob", amount=50)',
+            "```",
+            "",
+            "To transfer with a note:",
+            "```",
+            'APP_ACTION: paypal.transfer(to="alice", amount=25, note="thanks!")',
+            "```",
+            "",
+            "**Rules:**",
+            "- Always put APP_ACTION on its own line",
+            "- Use exact parameter names as shown",
+            "- String values must be in quotes",
+            "- Number values without quotes",
+            "- You can include multiple APP_ACTION directives in one message",
             "",
         ]
 

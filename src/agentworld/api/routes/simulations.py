@@ -129,6 +129,7 @@ async def create_simulation(request: CreateSimulationRequest):
                 name=a.name,
                 traits=a.traits or {},
                 background=a.background or "",
+                system_prompt=a.system_prompt,
                 model=a.model,
             )
             for a in request.agents
@@ -289,6 +290,7 @@ async def execute_step(simulation_id: str, request: StepRequest):
             name=agent_data.get("name", "Agent"),
             traits=agent_data.get("traits", {}),
             background=agent_data.get("background", ""),
+            system_prompt=agent_data.get("system_prompt"),
             model=agent_data.get("model"),
         ))
 

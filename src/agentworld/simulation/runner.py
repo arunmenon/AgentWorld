@@ -175,20 +175,31 @@ class Simulation:
         self._app_manager = SimulationAppManager(simulation_id=self.id)
         self._app_manager.set_repository(self.repository)
 
-        # Initialize apps
+        # Initialize apps with agent name mapping for name resolution
         agent_ids = [agent.id for agent in self.agents]
-        await self._app_manager.initialize_apps(app_configs, agent_ids)
+        agent_names = {agent.id: agent.name for agent in self.agents}
+        await self._app_manager.initialize_apps(app_configs, agent_ids, agent_names)
 
         logger.info(f"Initialized {len(self._app_manager.get_app_ids())} apps for simulation {self.id}")
 
         # Add app instructions to agent system prompts
         app_prompt = self._app_manager.get_available_apps_prompt()
         if app_prompt:
+            # Add final mandatory instruction
+            final_instruction = (
+                "\n\n---\n"
+                "CRITICAL OUTPUT REQUIREMENT: When you want to perform an action like transferring money, "
+                "you MUST include the APP_ACTION directive in your response. "
+                "Saying 'I will send money' does NOTHING. You must ACTUALLY output:\n"
+                'APP_ACTION: paypal_test.transfer(to="recipient_name", amount=50)\n'
+                "Include this on its own line in your message. This is mandatory, not optional.\n"
+                "---"
+            )
             for agent in self.agents:
                 if agent.system_prompt:
-                    agent.system_prompt = f"{agent.system_prompt}\n\n{app_prompt}"
+                    agent.system_prompt = f"{agent.system_prompt}\n\n{app_prompt}{final_instruction}"
                 else:
-                    agent.system_prompt = app_prompt
+                    agent.system_prompt = f"{app_prompt}{final_instruction}"
             logger.info(f"Added app instructions to {len(self.agents)} agents")
 
     def _initialize_topology(self) -> None:
@@ -465,6 +476,20 @@ class Simulation:
                 sender = self.get_agent(msg.sender_id)
                 sender_name = sender.name if sender else msg.sender_id
                 lines.append(f"  {sender_name}: {msg.content}")
+
+        # Add few-shot example if app manager has apps
+        if self._app_manager is not None and self._app_manager.get_app_ids():
+            lines.append("")
+            lines.append("---")
+            lines.append("EXAMPLE of a proper response when paying someone:")
+            lines.append('"""')
+            lines.append("Hey Alice, sending the money now!")
+            lines.append("")
+            lines.append('APP_ACTION: paypal_test.transfer(to="alice", amount=50)')
+            lines.append('"""')
+            lines.append("")
+            lines.append("Your response MUST follow this format if you're performing an action.")
+            lines.append("---")
 
         return "\n".join(lines) if lines else self.initial_prompt
 

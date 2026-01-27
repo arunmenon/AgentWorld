@@ -39,6 +39,7 @@ class AgentConfigRequest(BaseModel):
     name: str
     traits: Optional[dict[str, float]] = None
     background: Optional[str] = None
+    system_prompt: Optional[str] = None
     model: Optional[str] = None
 
 

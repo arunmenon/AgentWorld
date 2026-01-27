@@ -298,6 +298,7 @@ class SimulatedAppPlugin(Protocol):
         sim_id: str,
         agents: list[str],
         config: dict[str, Any],
+        agent_names: dict[str, str] | None = None,
     ) -> None:
         """Initialize app state for a simulation.
 
@@ -305,6 +306,7 @@ class SimulatedAppPlugin(Protocol):
             sim_id: Simulation ID
             agents: List of agent IDs participating
             config: App configuration from simulation config
+            agent_names: Optional mapping of agent_id -> agent_name for name resolution
         """
         ...
 
@@ -444,11 +446,13 @@ class BaseSimulatedApp(ABC):
         sim_id: str,
         agents: list[str],
         config: dict[str, Any],
+        agent_names: dict[str, str] | None = None,
     ) -> None:
         """Initialize app state for a simulation."""
         self._sim_id = sim_id
         self._agents = agents
         self._config = config
+        self._agent_names = agent_names or {}
         self._observations = {agent_id: [] for agent_id in agents}
         self._action_log = []
 

@@ -615,6 +615,42 @@ class AppDefinition:
 # ==============================================================================
 
 
+class AgentStateProxy(dict):
+    """Dict-like wrapper that resolves agent names to IDs.
+
+    Allows accessing agents by name (case-insensitive) or ID.
+    When accessed by name, resolves to the actual agent ID's state.
+    """
+
+    def __init__(self, per_agent: dict[str, dict[str, Any]], name_to_id: dict[str, str]):
+        super().__init__(per_agent)
+        self._name_to_id = {k.lower(): v for k, v in name_to_id.items()}
+        self._per_agent = per_agent
+
+    def __getitem__(self, key: str) -> dict[str, Any]:
+        # First try direct ID lookup
+        if key in self._per_agent:
+            return self._per_agent[key]
+        # Then try name resolution (case-insensitive)
+        resolved_id = self._name_to_id.get(key.lower())
+        if resolved_id and resolved_id in self._per_agent:
+            return self._per_agent[resolved_id]
+        # Return empty dict for unknown agents (will be created on write)
+        return {}
+
+    def __setitem__(self, key: str, value: dict[str, Any]) -> None:
+        # Resolve name to ID if possible
+        resolved_id = self._name_to_id.get(key.lower(), key)
+        self._per_agent[resolved_id] = value
+
+    def get(self, key: str, default: Any = None) -> Any:
+        try:
+            result = self.__getitem__(key)
+            return result if result else default
+        except KeyError:
+            return default
+
+
 @dataclass
 class AppState:
     """Canonical app state format.
@@ -630,12 +666,14 @@ class AppState:
 
     per_agent: dict[str, dict[str, Any]] = field(default_factory=dict)
     shared: dict[str, Any] = field(default_factory=dict)
+    name_to_id: dict[str, str] = field(default_factory=dict)  # Maps agent names to IDs
 
     def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary for JSON serialization."""
         return {
             "per_agent": self.per_agent,
             "shared": self.shared,
+            "name_to_id": self.name_to_id,
         }
 
     @classmethod
@@ -644,6 +682,7 @@ class AppState:
         return cls(
             per_agent=data.get("per_agent", {}),
             shared=data.get("shared", {}),
+            name_to_id=data.get("name_to_id", {}),
         )
 
     def get_agent_state(self, agent_id: str) -> dict[str, Any]:
@@ -659,10 +698,27 @@ class AppState:
         if agent_id not in self.per_agent:
             self.per_agent[agent_id] = dict(defaults or {})
 
+    def register_agent_name(self, agent_id: str, name: str) -> None:
+        """Register an agent name to ID mapping."""
+        self.name_to_id[name.lower()] = agent_id
+
+    def resolve_agent_id(self, key: str) -> str:
+        """Resolve a name or ID to the actual agent ID."""
+        # Try direct lookup first
+        if key in self.per_agent:
+            return key
+        # Try name resolution (case-insensitive)
+        return self.name_to_id.get(key.lower(), key)
+
+    def get_agents_proxy(self) -> AgentStateProxy:
+        """Get a proxy dict that resolves names to IDs."""
+        return AgentStateProxy(self.per_agent, self.name_to_id)
+
     def deep_copy(self) -> "AppState":
         """Create a deep copy of the state."""
         import copy
         return AppState(
             per_agent=copy.deepcopy(self.per_agent),
             shared=copy.deepcopy(self.shared),
+            name_to_id=copy.deepcopy(self.name_to_id),
         )

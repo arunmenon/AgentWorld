@@ -149,6 +149,11 @@ class DynamicApp(BaseSimulatedApp):
                     agent_state[key] = value
             self._app_state.set_agent_state(agent_id, agent_state)
 
+        # Register agent names for name-to-ID resolution
+        if hasattr(self, '_agent_names') and self._agent_names:
+            for agent_id, name in self._agent_names.items():
+                self._app_state.register_agent_name(agent_id, name)
+
         # Initialize shared state
         self._app_state.shared = copy.deepcopy(shared_defaults)
         for key, value in merged_config.items():
