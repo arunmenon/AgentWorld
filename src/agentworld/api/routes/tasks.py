@@ -61,7 +61,7 @@ from agentworld.tasks.runner import TaskExecutionConfig, TaskRunner
 
 logger = logging.getLogger(__name__)
 
-router = APIRouter(prefix="/api/v1", tags=["tasks"])
+router = APIRouter(tags=["tasks"])
 
 
 def get_task_repository(repo: Repository = Depends(get_repository)) -> TaskRepository:
