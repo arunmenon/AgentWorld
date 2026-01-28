@@ -628,3 +628,295 @@ class TestExampleTasks:
 
         task = get_task_by_id("nonexistent_task")
         assert task is None
+
+
+# =============================================================================
+# Test Suite 8: SemanticMatcher (τ²-bench enhancement)
+# =============================================================================
+
+
+class TestSemanticMatcher:
+    """Tests for SemanticMatcher semantic similarity matching."""
+
+    def test_singleton_instance(self):
+        """SemanticMatcher returns same instance."""
+        from agentworld.tasks.dual_control import SemanticMatcher
+
+        instance1 = SemanticMatcher.get_instance()
+        instance2 = SemanticMatcher.get_instance()
+        assert instance1 is instance2
+
+    def test_not_available_without_model(self):
+        """Matcher not available without loaded model."""
+        from agentworld.tasks.dual_control import SemanticMatcher
+
+        matcher = SemanticMatcher()
+        assert matcher.is_available is False
+
+    def test_cosine_similarity(self):
+        """Cosine similarity computed correctly."""
+        from agentworld.tasks.dual_control import SemanticMatcher
+
+        matcher = SemanticMatcher()
+
+        # Same vector = 1.0
+        vec = [1.0, 0.0, 0.0]
+        assert abs(matcher._cosine_similarity(vec, vec) - 1.0) < 0.0001
+
+        # Orthogonal vectors = 0.0
+        vec1 = [1.0, 0.0, 0.0]
+        vec2 = [0.0, 1.0, 0.0]
+        assert abs(matcher._cosine_similarity(vec1, vec2)) < 0.0001
+
+        # Similar vectors
+        vec1 = [1.0, 1.0, 0.0]
+        vec2 = [1.0, 0.0, 0.0]
+        sim = matcher._cosine_similarity(vec1, vec2)
+        assert 0.5 < sim < 1.0  # Should be ~0.707
+
+    def test_custom_embed_function(self):
+        """Custom embedding function can be set."""
+        from agentworld.tasks.dual_control import SemanticMatcher
+
+        matcher = SemanticMatcher()
+
+        # Set custom function that returns fixed embedding
+        def custom_embed(text: str) -> list[float]:
+            return [1.0, 0.0, 0.0]
+
+        matcher.set_custom_embed_function(custom_embed)
+        assert matcher.is_available is True
+
+        embedding = matcher.embed("test text")
+        assert embedding == [1.0, 0.0, 0.0]
+
+
+class TestInstructionTemplateSemanticMatching:
+    """Tests for InstructionTemplate with semantic matching."""
+
+    def test_template_with_canonical_instruction(self):
+        """Template stores canonical instruction."""
+        template = InstructionTemplate(
+            template_id="test",
+            keywords=["check"],
+            target_keywords=["balance"],
+            canonical_instruction="Please check your account balance",
+        )
+        assert template.canonical_instruction == "Please check your account balance"
+
+    def test_to_dict_includes_canonical(self):
+        """to_dict includes canonical instruction."""
+        template = InstructionTemplate(
+            template_id="test",
+            keywords=["check"],
+            target_keywords=["balance"],
+            canonical_instruction="Please check your balance",
+        )
+
+        data = template.to_dict()
+        assert "canonical_instruction" in data
+        assert data["canonical_instruction"] == "Please check your balance"
+
+    def test_from_dict_restores_canonical(self):
+        """from_dict restores canonical instruction."""
+        data = {
+            "template_id": "test",
+            "keywords": ["check"],
+            "target_keywords": ["balance"],
+            "canonical_instruction": "Check balance please",
+            "semantic_threshold": 0.85,
+        }
+
+        template = InstructionTemplate.from_dict(data)
+        assert template.canonical_instruction == "Check balance please"
+        assert template.semantic_threshold == 0.85
+
+
+class TestNewDomainTemplates:
+    """Tests for new airline and PayPal instruction templates."""
+
+    def test_airline_templates_exist(self):
+        """Airline domain templates are defined."""
+        from agentworld.tasks.dual_control import (
+            CHECK_BOOKING_TEMPLATE,
+            CONFIRM_SEAT_TEMPLATE,
+            CHANGE_PREFERENCE_TEMPLATE,
+        )
+
+        assert CHECK_BOOKING_TEMPLATE.template_id == "check_booking"
+        assert CONFIRM_SEAT_TEMPLATE.template_id == "confirm_seat"
+        assert CHANGE_PREFERENCE_TEMPLATE.template_id == "change_preference"
+
+    def test_paypal_templates_exist(self):
+        """PayPal domain templates are defined."""
+        from agentworld.tasks.dual_control import (
+            CHECK_BALANCE_TEMPLATE,
+            CONFIRM_TRANSFER_TEMPLATE,
+            ADD_RECIPIENT_TEMPLATE,
+        )
+
+        assert CHECK_BALANCE_TEMPLATE.template_id == "check_balance"
+        assert CONFIRM_TRANSFER_TEMPLATE.template_id == "confirm_transfer"
+        assert ADD_RECIPIENT_TEMPLATE.template_id == "add_recipient"
+
+    def test_check_booking_matches(self):
+        """CHECK_BOOKING_TEMPLATE matches booking instructions."""
+        from agentworld.tasks.dual_control import CHECK_BOOKING_TEMPLATE
+
+        matched, _ = CHECK_BOOKING_TEMPLATE.matches("Please check your booking confirmation")
+        assert matched is True
+
+        matched, _ = CHECK_BOOKING_TEMPLATE.matches("Pull up your flight reservation")
+        assert matched is True
+
+    def test_confirm_transfer_matches(self):
+        """CONFIRM_TRANSFER_TEMPLATE matches transfer confirmations."""
+        from agentworld.tasks.dual_control import CONFIRM_TRANSFER_TEMPLATE
+
+        matched, _ = CONFIRM_TRANSFER_TEMPLATE.matches("Please confirm the payment on your screen")
+        assert matched is True
+
+        matched, _ = CONFIRM_TRANSFER_TEMPLATE.matches("Authorize the transfer")
+        assert matched is True
+
+
+# =============================================================================
+# Test Suite 9: Communication Error Categories (FaultType)
+# =============================================================================
+
+
+class TestCommunicationErrorCategories:
+    """Tests for τ²-bench communication error fault types."""
+
+    def test_fault_category_enum_exists(self):
+        """FaultCategory enum is defined."""
+        from agentworld.tasks.definitions import FaultCategory
+
+        assert FaultCategory.REASONING.value == "reasoning"
+        assert FaultCategory.COMMUNICATION.value == "communication"
+        assert FaultCategory.EXECUTION.value == "execution"
+
+    def test_communication_fault_types(self):
+        """Communication-specific fault types exist."""
+        from agentworld.tasks.definitions import FaultType
+
+        assert FaultType.INSTRUCTION_UNCLEAR.value == "instruction_unclear"
+        assert FaultType.INSTRUCTION_INCOMPLETE.value == "instruction_incomplete"
+        assert FaultType.INSTRUCTION_WRONG.value == "instruction_wrong"
+        assert FaultType.USER_MISUNDERSTOOD.value == "user_misunderstood"
+        assert FaultType.USER_CONFUSED.value == "user_confused"
+        assert FaultType.USER_ACTION_FAILED.value == "user_action_failed"
+
+    def test_fault_type_category_property(self):
+        """FaultType.category returns correct FaultCategory."""
+        from agentworld.tasks.definitions import FaultType, FaultCategory
+
+        # Communication types
+        assert FaultType.INSTRUCTION_UNCLEAR.category == FaultCategory.COMMUNICATION
+        assert FaultType.USER_CONFUSED.category == FaultCategory.COMMUNICATION
+
+        # Execution types
+        assert FaultType.TIMEOUT.category == FaultCategory.EXECUTION
+        assert FaultType.API_ERROR.category == FaultCategory.EXECUTION
+
+        # Reasoning types
+        assert FaultType.REASONING_ERROR.category == FaultCategory.REASONING
+        assert FaultType.WRONG_ACTION.category == FaultCategory.REASONING
+
+    def test_get_communication_types(self):
+        """get_communication_types returns all communication errors."""
+        from agentworld.tasks.definitions import FaultType
+
+        comm_types = FaultType.get_communication_types()
+        assert len(comm_types) == 6
+        assert FaultType.INSTRUCTION_UNCLEAR in comm_types
+        assert FaultType.USER_CONFUSED in comm_types
+
+    def test_get_reasoning_types(self):
+        """get_reasoning_types returns all reasoning errors."""
+        from agentworld.tasks.definitions import FaultType
+
+        reasoning_types = FaultType.get_reasoning_types()
+        assert FaultType.REASONING_ERROR in reasoning_types
+        assert FaultType.GOAL_NOT_ACHIEVED in reasoning_types
+
+    def test_get_execution_types(self):
+        """get_execution_types returns all execution errors."""
+        from agentworld.tasks.definitions import FaultType
+
+        exec_types = FaultType.get_execution_types()
+        assert len(exec_types) == 3
+        assert FaultType.TIMEOUT in exec_types
+        assert FaultType.SYSTEM_ERROR in exec_types
+
+
+# =============================================================================
+# Test Suite 10: Observable State Field
+# =============================================================================
+
+
+class TestObservableStateField:
+    """Tests for state field observable property (state-constrained mode)."""
+
+    def test_state_field_def_has_observable(self):
+        """StateFieldDef has observable property."""
+        from agentworld.apps.definition import StateFieldDef, ParamType
+
+        field = StateFieldDef(
+            name="balance",
+            type=ParamType.NUMBER,
+            observable=True,
+        )
+        assert field.observable is True
+
+        field = StateFieldDef(
+            name="internal_id",
+            type=ParamType.STRING,
+            observable=False,
+        )
+        assert field.observable is False
+
+    def test_state_field_def_default_observable(self):
+        """StateFieldDef defaults to observable=True for backward compat."""
+        from agentworld.apps.definition import StateFieldDef, ParamType
+
+        field = StateFieldDef(
+            name="balance",
+            type=ParamType.NUMBER,
+        )
+        assert field.observable is True
+
+    def test_state_field_to_dict_includes_observable(self):
+        """to_dict includes observable field."""
+        from agentworld.apps.definition import StateFieldDef, ParamType
+
+        field = StateFieldDef(
+            name="test",
+            type=ParamType.BOOLEAN,
+            observable=False,
+        )
+
+        data = field.to_dict()
+        assert "observable" in data
+        assert data["observable"] is False
+
+    def test_state_field_from_dict_restores_observable(self):
+        """from_dict restores observable field."""
+        from agentworld.apps.definition import StateFieldDef
+
+        data = {
+            "name": "test",
+            "type": "string",
+            "observable": False,
+        }
+
+        field = StateFieldDef.from_dict(data)
+        assert field.observable is False
+
+        # Default to True if not specified
+        data_no_observable = {
+            "name": "test2",
+            "type": "number",
+        }
+        field2 = StateFieldDef.from_dict(data_no_observable)
+        assert field2.observable is True

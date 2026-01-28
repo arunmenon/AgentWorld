@@ -1,8 +1,8 @@
 # AgentWorld Implementation Tracker
 
 > **Last Updated:** 2026-01-28
-> **Current Phase:** Phase 10h - Dual-Control Extension (~85% complete)
-> **Overall Progress:** 19.5/26 ADRs implemented (Phase 1: ADR-003, ADR-004, ADR-008, UI-ADR-005; Phase 2: ADR-005, ADR-006; Phase 3: ADR-009, ADR-011; Phase 4+: ADR-010, ADR-014, ADR-015; Phase 5: ADR-012, ADR-013; Phase 6: UI-ADR-001, UI-ADR-002; Phase 7: UI-ADR-003, UI-ADR-004; Phase 7+: ADR-016, ADR-017; Phase 10f: ADR-020 ~90%; Phase 10g: ADR-021 ✅; Phase 10h: ADR-020.1 ~85%)
+> **Current Phase:** Phase 10h - Dual-Control Extension (~95% complete)
+> **Overall Progress:** 19.5/26 ADRs implemented (Phase 1: ADR-003, ADR-004, ADR-008, UI-ADR-005; Phase 2: ADR-005, ADR-006; Phase 3: ADR-009, ADR-011; Phase 4+: ADR-010, ADR-014, ADR-015; Phase 5: ADR-012, ADR-013; Phase 6: UI-ADR-001, UI-ADR-002; Phase 7: UI-ADR-003, UI-ADR-004; Phase 7+: ADR-016, ADR-017; Phase 10f: ADR-020 ~90%; Phase 10g: ADR-021 ✅; Phase 10h: ADR-020.1 ~95%)
 
 ---
 
@@ -38,7 +38,7 @@
 | 10e | App Studio: Sim Integration | 🔴 | 🔴 | UI-013 | Add apps to simulations | `scripts/verify_phase10e.py` |
 | 10f | τ-bench Evaluation | 🟡 | ⚠️ | 020 | Pass^k metrics + task evaluation (~90%) | `scripts/verify_phase10f.py` |
 | 10g | App Benchmark Evaluation | 🟢 | ⚠️ | 021 | Quality metrics + scenario runner | `scripts/verify_phase10g.py` |
-| 10h | Dual-Control Extension | 🟡 | 🟢 | 020.1 | τ²-bench dual-control support (~85%) | `pytest tests/api/test_dual_control.py tests/tasks/test_dual_control.py tests/apps/test_dual_control_apps.py` |
+| 10h | Dual-Control Extension | 🟡 | 🟢 | 020.1 | τ²-bench dual-control support (~95%) | `pytest tests/api/test_dual_control.py tests/tasks/test_dual_control.py tests/apps/test_dual_control_apps.py tests/environment/test_gym_wrapper.py tests/tasks/test_generator.py` |
 
 > **Test Status Legend:** 🟢 All tests pass | ⚠️ Tests incomplete | 🔴 No tests
 >
@@ -1821,6 +1821,48 @@ Phase 10 is split into 6 sub-phases to enable incremental delivery and clear mil
 | SoloDualComparison | 🔴 | `web/src/components/tasks/SoloDualComparison.tsx` | Manual test | Comparison results |
 | CoordinationAnalysis | 🔴 | `web/src/components/tasks/CoordinationAnalysis.tsx` | Manual test | Handoff breakdown |
 | TaskCreate page | 🔴 | `web/src/pages/TaskCreate.tsx` | Manual test | New page |
+
+#### Phase 10h-9: τ²-bench Gap Analysis Implementation (NEW)
+
+> **Status:** 🟢 Complete (2026-01-28)
+> **Source:** τ²-bench Gap Analysis Plan
+
+| Component | Status | File(s) | Verification | Notes |
+|-----------|--------|---------|--------------|-------|
+| **Phase 1: State-Constrained User Simulation** | | | | |
+| `observable` field in StateFieldDef | 🟢 | `src/agentworld/apps/definition.py` | `pytest tests/tasks/test_dual_control.py::TestObservableStateField` | Per-field visibility control |
+| `generate_system_prompt()` with observable_state | 🟢 | `src/agentworld/personas/prompts.py` | Import test | Injects observable state into prompt |
+| `get_observable_state()` method | 🟢 | `src/agentworld/apps/manager.py` | Import test | Filters state by observable fields |
+| State-constrained mode in Simulation | 🟢 | `src/agentworld/simulation/runner.py` | Import test | `enable_state_constrained_mode()` |
+| **Phase 2: Communication Error Categories** | | | | |
+| `FaultCategory` enum | 🟢 | `src/agentworld/tasks/definitions.py` | `pytest tests/tasks/test_dual_control.py::TestCommunicationErrorCategories` | REASONING, COMMUNICATION, EXECUTION |
+| Communication fault types | 🟢 | `src/agentworld/tasks/definitions.py` | Import test | INSTRUCTION_UNCLEAR, USER_CONFUSED, etc. |
+| `FaultType.category` property | 🟢 | `src/agentworld/tasks/definitions.py` | Import test | Maps fault type to category |
+| Communication pattern detection | 🟢 | `src/agentworld/evaluation/fault_classifier.py` | Import test | Regex patterns for user confusion |
+| `by_category` in FaultSummary | 🟢 | `src/agentworld/evaluation/fault_classifier.py` | Import test | Category-based aggregation |
+| **Phase 3: Gymnasium Interface** | | | | |
+| `environment/` module | 🟢 | `src/agentworld/environment/__init__.py` | Import test | New module |
+| `DualControlAgentEnv` | 🟢 | `src/agentworld/environment/gym_wrapper.py` | `pytest tests/environment/test_gym_wrapper.py` | Agent-side gym.Env |
+| `DualControlUserEnv` | 🟢 | `src/agentworld/environment/gym_wrapper.py` | Import test | User-side gym.Env |
+| `register_environments()` | 🟢 | `src/agentworld/environment/gym_wrapper.py` | Import test | Gymnasium registration |
+| **Phase 4: Compositional Task Generator** | | | | |
+| `StateCondition` | 🟢 | `src/agentworld/tasks/generator.py` | `pytest tests/tasks/test_generator.py` | Precondition/postcondition |
+| `AtomicTaskComponent` | 🟢 | `src/agentworld/tasks/generator.py` | Import test | Atomic action unit |
+| `TaskComposition` | 🟢 | `src/agentworld/tasks/generator.py` | Import test | Component chain |
+| `CompositionalTaskGenerator` | 🟢 | `src/agentworld/tasks/generator.py` | Import test | Task generation from components |
+| `from_action_definition()` | 🟢 | `src/agentworld/tasks/generator.py` | Import test | Extract components from apps |
+| **Phase 5: Semantic Matching Enhancement** | | | | |
+| `SemanticMatcher` class | 🟢 | `src/agentworld/tasks/dual_control.py` | `pytest tests/tasks/test_dual_control.py::TestSemanticMatcher` | Singleton embedding matcher |
+| `canonical_instruction` field | 🟢 | `src/agentworld/tasks/dual_control.py` | Import test | Canonical form for embedding |
+| Cosine similarity computation | 🟢 | `src/agentworld/tasks/dual_control.py` | Import test | `_cosine_similarity()` |
+| Airline domain templates | 🟢 | `src/agentworld/tasks/dual_control.py` | `pytest tests/tasks/test_dual_control.py::TestNewDomainTemplates` | CHECK_BOOKING, CONFIRM_SEAT, etc. |
+| PayPal domain templates | 🟢 | `src/agentworld/tasks/dual_control.py` | Import test | CHECK_BALANCE, CONFIRM_TRANSFER, etc. |
+
+**Test Files Created:**
+- `tests/environment/__init__.py`
+- `tests/environment/test_gym_wrapper.py`
+- `tests/tasks/test_generator.py`
+- Extended `tests/tasks/test_dual_control.py` with 4 new test suites
 
 ### Phase 10h Implementation Estimates
 

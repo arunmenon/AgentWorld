@@ -4,20 +4,199 @@ This module implements τ²-bench style dual-control evaluation per ADR-020.1:
 - DualControlTaskDefinition: Tasks requiring agent-user coordination
 - CoordinationEvent: Tracks instruction → action handoffs
 - CoordinationMetrics: Measures coordination success and efficiency
-- InstructionTemplate: Structured instruction matching
+- InstructionTemplate: Structured instruction matching with semantic fallback
+- SemanticMatcher: Embedding-based semantic similarity matching
 
 Per ADR-020.1: https://arxiv.org/abs/2506.07982
 """
 
 from __future__ import annotations
 
+import logging
 import re
 from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum
-from typing import Any
+from typing import Any, Callable
 
 from agentworld.apps.definition import AgentRole
+
+logger = logging.getLogger(__name__)
+
+
+# ==============================================================================
+# Semantic Matching (τ²-bench enhancement)
+# ==============================================================================
+
+
+class SemanticMatcher:
+    """Semantic similarity matcher using embeddings.
+
+    Provides tiered matching for instruction text:
+    1. Keyword matching (fast, high precision)
+    2. Semantic embedding similarity (handles paraphrasing)
+
+    Supports multiple embedding providers:
+    - sentence-transformers (default, local)
+    - OpenAI embeddings API
+    - Custom embedding function
+
+    Example:
+        >>> matcher = SemanticMatcher()
+        >>> matcher.load_model("all-MiniLM-L6-v2")
+        >>> similarity = matcher.compute_similarity(
+        ...     "turn on mobile data",
+        ...     "enable cellular internet"
+        ... )
+        >>> print(f"Similarity: {similarity:.2f}")  # ~0.85
+    """
+
+    _instance: "SemanticMatcher | None" = None
+    _model: Any = None
+    _model_name: str | None = None
+
+    def __init__(self):
+        """Initialize the semantic matcher."""
+        self._custom_embed_fn: Callable[[str], list[float]] | None = None
+
+    @classmethod
+    def get_instance(cls) -> "SemanticMatcher":
+        """Get singleton instance of the matcher."""
+        if cls._instance is None:
+            cls._instance = cls()
+        return cls._instance
+
+    def load_model(self, model_name: str = "all-MiniLM-L6-v2") -> bool:
+        """Load a sentence-transformers model.
+
+        Args:
+            model_name: Name of the model from HuggingFace
+
+        Returns:
+            True if model loaded successfully
+        """
+        try:
+            from sentence_transformers import SentenceTransformer
+            self._model = SentenceTransformer(model_name)
+            self._model_name = model_name
+            logger.info(f"Loaded semantic model: {model_name}")
+            return True
+        except ImportError:
+            logger.warning(
+                "sentence-transformers not installed. "
+                "Semantic matching disabled. Install with: "
+                "pip install sentence-transformers"
+            )
+            return False
+        except Exception as e:
+            logger.error(f"Failed to load model {model_name}: {e}")
+            return False
+
+    def set_custom_embed_function(
+        self,
+        embed_fn: Callable[[str], list[float]],
+    ) -> None:
+        """Set a custom embedding function.
+
+        Args:
+            embed_fn: Function that takes text and returns embedding vector
+        """
+        self._custom_embed_fn = embed_fn
+        logger.info("Using custom embedding function for semantic matching")
+
+    def embed(self, text: str) -> list[float] | None:
+        """Compute embedding for text.
+
+        Args:
+            text: Text to embed
+
+        Returns:
+            Embedding vector or None if no model loaded
+        """
+        if self._custom_embed_fn is not None:
+            return self._custom_embed_fn(text)
+
+        if self._model is not None:
+            try:
+                embedding = self._model.encode(text, convert_to_numpy=True)
+                return embedding.tolist()
+            except Exception as e:
+                logger.warning(f"Embedding failed: {e}")
+                return None
+
+        return None
+
+    def compute_similarity(
+        self,
+        text1: str,
+        text2: str,
+    ) -> float:
+        """Compute semantic similarity between two texts.
+
+        Uses cosine similarity of embeddings.
+
+        Args:
+            text1: First text
+            text2: Second text
+
+        Returns:
+            Similarity score (0-1), or 0.0 if embedding fails
+        """
+        emb1 = self.embed(text1)
+        emb2 = self.embed(text2)
+
+        if emb1 is None or emb2 is None:
+            return 0.0
+
+        return self._cosine_similarity(emb1, emb2)
+
+    def compute_similarity_with_embedding(
+        self,
+        text: str,
+        embedding: list[float],
+    ) -> float:
+        """Compute similarity between text and pre-computed embedding.
+
+        Args:
+            text: Text to compare
+            embedding: Pre-computed embedding vector
+
+        Returns:
+            Similarity score (0-1)
+        """
+        text_emb = self.embed(text)
+        if text_emb is None:
+            return 0.0
+
+        return self._cosine_similarity(text_emb, embedding)
+
+    def _cosine_similarity(
+        self,
+        vec1: list[float],
+        vec2: list[float],
+    ) -> float:
+        """Compute cosine similarity between two vectors."""
+        if len(vec1) != len(vec2):
+            return 0.0
+
+        dot_product = sum(a * b for a, b in zip(vec1, vec2))
+        norm1 = sum(a * a for a in vec1) ** 0.5
+        norm2 = sum(b * b for b in vec2) ** 0.5
+
+        if norm1 == 0 or norm2 == 0:
+            return 0.0
+
+        return dot_product / (norm1 * norm2)
+
+    @property
+    def is_available(self) -> bool:
+        """Check if semantic matching is available."""
+        return self._model is not None or self._custom_embed_fn is not None
+
+    @property
+    def model_name(self) -> str | None:
+        """Get the loaded model name."""
+        return self._model_name
 
 
 # ==============================================================================
@@ -33,17 +212,32 @@ class InstructionTemplate:
     1. Keyword matching (fast, high precision)
     2. Semantic similarity (fallback for paraphrasing)
 
-    Per ADR-020.1.
+    Per ADR-020.1, enhanced with semantic embedding support.
+
+    Example:
+        >>> template = InstructionTemplate(
+        ...     template_id="toggle_data",
+        ...     keywords=["toggle", "turn", "switch"],
+        ...     target_keywords=["data", "mobile data"],
+        ...     canonical_instruction="Please toggle your mobile data",
+        ... )
+        >>> matched, confidence = template.matches("enable cellular internet")
+        >>> print(f"Matched: {matched}, Confidence: {confidence:.2f}")
     """
 
     template_id: str
     keywords: list[str]        # Action keywords (e.g., ["toggle", "turn", "switch"])
     target_keywords: list[str] # Target object keywords (e.g., ["data", "mobile data"])
-    semantic_embedding: list[float] | None = None  # Optional semantic fallback
-    semantic_threshold: float = 0.85
+    semantic_embedding: list[float] | None = None  # Pre-computed embedding
+    semantic_threshold: float = 0.80  # Threshold for semantic match
+    canonical_instruction: str = ""  # Canonical form for computing embedding
 
     def matches(self, instruction_text: str) -> tuple[bool, float]:
         """Match instruction text against template.
+
+        Uses tiered matching:
+        1. Keyword matching (fast, high precision) - returns confidence 0.95
+        2. Semantic similarity (handles paraphrasing) - returns actual similarity
 
         Returns:
             Tuple of (matched, confidence)
@@ -57,23 +251,68 @@ class InstructionTemplate:
         if action_keyword_found and target_keyword_found:
             return True, 0.95  # High confidence keyword match
 
-        # Tier 2: Semantic similarity would go here
-        # (requires embedding model integration)
-        if self.semantic_embedding:
-            # Placeholder for semantic matching
-            # In production, would compute cosine similarity
-            pass
+        # Tier 2: Semantic similarity (handles paraphrasing)
+        matcher = SemanticMatcher.get_instance()
+        if not matcher.is_available:
+            return False, 0.0
 
-        return False, 0.0
+        # Compute similarity
+        if self.semantic_embedding is not None:
+            # Use pre-computed embedding
+            similarity = matcher.compute_similarity_with_embedding(
+                instruction_text, self.semantic_embedding
+            )
+        elif self.canonical_instruction:
+            # Compute on-the-fly
+            similarity = matcher.compute_similarity(
+                instruction_text, self.canonical_instruction
+            )
+        else:
+            # Build canonical from keywords
+            canonical = f"{' '.join(self.keywords[:2])} {' '.join(self.target_keywords[:2])}"
+            similarity = matcher.compute_similarity(instruction_text, canonical)
+
+        if similarity >= self.semantic_threshold:
+            return True, similarity
+
+        return False, similarity  # Return similarity even if below threshold
+
+    def compute_and_cache_embedding(self) -> bool:
+        """Compute and cache the semantic embedding.
+
+        Uses the canonical_instruction or builds one from keywords.
+
+        Returns:
+            True if embedding computed successfully
+        """
+        matcher = SemanticMatcher.get_instance()
+        if not matcher.is_available:
+            return False
+
+        text = self.canonical_instruction
+        if not text:
+            text = f"{' '.join(self.keywords[:2])} {' '.join(self.target_keywords[:2])}"
+
+        embedding = matcher.embed(text)
+        if embedding is not None:
+            self.semantic_embedding = embedding
+            return True
+
+        return False
 
     def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary."""
-        return {
+        result = {
             "template_id": self.template_id,
             "keywords": self.keywords,
             "target_keywords": self.target_keywords,
             "semantic_threshold": self.semantic_threshold,
         }
+        if self.canonical_instruction:
+            result["canonical_instruction"] = self.canonical_instruction
+        if self.semantic_embedding:
+            result["semantic_embedding"] = self.semantic_embedding
+        return result
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> "InstructionTemplate":
@@ -83,7 +322,8 @@ class InstructionTemplate:
             keywords=data.get("keywords", []),
             target_keywords=data.get("target_keywords", []),
             semantic_embedding=data.get("semantic_embedding"),
-            semantic_threshold=data.get("semantic_threshold", 0.85),
+            semantic_threshold=data.get("semantic_threshold", 0.80),
+            canonical_instruction=data.get("canonical_instruction", ""),
         )
 
 
@@ -580,22 +820,70 @@ TOGGLE_DATA_TEMPLATE = InstructionTemplate(
     template_id="toggle_mobile_data",
     keywords=["toggle", "turn", "switch", "enable", "disable", "turn on", "turn off"],
     target_keywords=["data", "mobile data", "cellular", "internet", "connectivity"],
+    canonical_instruction="Please toggle your mobile data on or off",
 )
 
 CHECK_STATUS_TEMPLATE = InstructionTemplate(
     template_id="check_status",
     keywords=["check", "look", "see", "view", "tell me", "what does", "read"],
     target_keywords=["status", "bar", "signal", "screen", "display", "icon"],
+    canonical_instruction="Please check the status on your screen and tell me what you see",
 )
 
 RESTART_DEVICE_TEMPLATE = InstructionTemplate(
     template_id="restart_device",
     keywords=["restart", "reboot", "turn off and on", "power cycle"],
     target_keywords=["device", "phone", "mobile", "handset"],
+    canonical_instruction="Please restart your device by turning it off and on",
 )
 
 TOGGLE_AIRPLANE_TEMPLATE = InstructionTemplate(
     template_id="toggle_airplane_mode",
     keywords=["toggle", "turn", "switch", "enable", "disable"],
     target_keywords=["airplane", "flight mode", "aeroplane"],
+    canonical_instruction="Please toggle airplane mode on your device",
+)
+
+# Airline domain templates (τ²-bench)
+CHECK_BOOKING_TEMPLATE = InstructionTemplate(
+    template_id="check_booking",
+    keywords=["check", "look", "find", "view", "pull up", "open"],
+    target_keywords=["booking", "reservation", "confirmation", "itinerary", "flight"],
+    canonical_instruction="Please check your booking confirmation and tell me what you see",
+)
+
+CONFIRM_SEAT_TEMPLATE = InstructionTemplate(
+    template_id="confirm_seat",
+    keywords=["confirm", "verify", "check", "see", "look at"],
+    target_keywords=["seat", "seat number", "assigned seat", "seat assignment"],
+    canonical_instruction="Please confirm your seat assignment on your boarding pass",
+)
+
+CHANGE_PREFERENCE_TEMPLATE = InstructionTemplate(
+    template_id="change_preference",
+    keywords=["change", "update", "modify", "switch", "select"],
+    target_keywords=["preference", "seat preference", "meal", "special request"],
+    canonical_instruction="Please update your preference in your booking",
+)
+
+# PayPal domain templates (τ²-bench)
+CHECK_BALANCE_TEMPLATE = InstructionTemplate(
+    template_id="check_balance",
+    keywords=["check", "look", "view", "see", "tell me"],
+    target_keywords=["balance", "account", "funds", "available", "money"],
+    canonical_instruction="Please check your account balance and tell me the amount",
+)
+
+CONFIRM_TRANSFER_TEMPLATE = InstructionTemplate(
+    template_id="confirm_transfer",
+    keywords=["confirm", "approve", "accept", "authorize", "verify"],
+    target_keywords=["transfer", "payment", "transaction", "send"],
+    canonical_instruction="Please confirm the transfer/payment on your screen",
+)
+
+ADD_RECIPIENT_TEMPLATE = InstructionTemplate(
+    template_id="add_recipient",
+    keywords=["add", "enter", "input", "type", "save"],
+    target_keywords=["recipient", "contact", "payee", "email", "account"],
+    canonical_instruction="Please add the recipient's information to send the payment",
 )

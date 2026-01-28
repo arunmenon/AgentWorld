@@ -68,6 +68,10 @@ class Simulation:
     _injection_manager: "InjectedAgentManager | None" = field(default=None, repr=False)
     _app_manager: SimulationAppManager | None = field(default=None, repr=False)
 
+    # τ²-bench state-constrained mode (ADR-020.1)
+    state_constrained_mode: bool = False
+    _state_constrained_agents: set[str] = field(default_factory=set, repr=False)
+
     @classmethod
     def from_config(cls, config: SimulationConfig) -> "Simulation":
         """Create a simulation from configuration.
@@ -464,6 +468,31 @@ class Simulation:
                 obs_text = self._app_manager.format_observations_for_context(observations)
                 lines.append(obs_text)
 
+        # Add observable state for state-constrained agents (τ²-bench)
+        if (
+            self.state_constrained_mode
+            and for_agent.id in self._state_constrained_agents
+            and self._app_manager is not None
+        ):
+            observable_state = await self._app_manager.get_observable_state(for_agent.id)
+            if observable_state:
+                lines.append("\n[Your Observable Device State]")
+                lines.append("(You can ONLY report information shown below)")
+                lines.append("---")
+                for app_id, app_state in observable_state.items():
+                    lines.append(f"  [{app_id}]")
+                    for field_name, field_value in app_state.items():
+                        if isinstance(field_value, bool):
+                            display = "Yes" if field_value else "No"
+                        elif field_value is None:
+                            display = "(not shown)"
+                        else:
+                            display = str(field_value)
+                        lines.append(f"    • {field_name}: {display}")
+                lines.append("---")
+                lines.append("IMPORTANT: Only report what you can see above. Do not invent information.")
+                lines.append("")
+
         # Add topic
         if self.initial_prompt:
             lines.append(f"Topic: {self.initial_prompt}\n")
@@ -492,6 +521,44 @@ class Simulation:
             lines.append("---")
 
         return "\n".join(lines) if lines else self.initial_prompt
+
+    def enable_state_constrained_mode(self, agent_ids: list[str] | None = None) -> None:
+        """Enable τ²-bench state-constrained mode for specified agents.
+
+        In state-constrained mode, user agents can only report information
+        that is marked as observable in the app state schema. This prevents
+        user simulators from hallucinating device information.
+
+        Args:
+            agent_ids: List of agent IDs to constrain. If None, constrains
+                all agents with role=CUSTOMER.
+        """
+        self.state_constrained_mode = True
+
+        if agent_ids is not None:
+            self._state_constrained_agents = set(agent_ids)
+        else:
+            # Default: constrain all CUSTOMER role agents
+            from agentworld.apps.definition import AgentRole
+            for agent in self.agents:
+                # Check if agent has a role attribute or tag
+                agent_role = getattr(agent, "role", None)
+                if agent_role == AgentRole.CUSTOMER or agent_role == "customer":
+                    self._state_constrained_agents.add(agent.id)
+                # Also check role_tags
+                role_tags = getattr(agent, "role_tags", []) or []
+                if "customer" in role_tags or "user" in role_tags:
+                    self._state_constrained_agents.add(agent.id)
+
+        logger.info(
+            f"Enabled state-constrained mode for {len(self._state_constrained_agents)} agents"
+        )
+
+    def disable_state_constrained_mode(self) -> None:
+        """Disable τ²-bench state-constrained mode."""
+        self.state_constrained_mode = False
+        self._state_constrained_agents.clear()
+        logger.info("Disabled state-constrained mode")
 
     def _build_context(self, for_agent: Agent, recent_count: int = 5) -> str:
         """Build context string for an agent (sync version).

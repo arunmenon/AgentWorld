@@ -176,6 +176,12 @@ class StateFieldDef:
     """State field definition.
 
     Defines a field in the app state schema.
+
+    Per τ²-bench integration (ADR-020.1):
+    - observable: Whether user agents can see this field in state-constrained mode.
+      When True, the field value is included in the user's observable state,
+      allowing state-constrained user simulators to respond only based on
+      what they can actually "see" on their device.
     """
 
     name: str
@@ -183,6 +189,7 @@ class StateFieldDef:
     default: Any = None
     per_agent: bool = True  # If False, it's shared state
     description: str = ""
+    observable: bool = True  # NEW: Whether user can see this field (τ²-bench)
 
     def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary for JSON serialization."""
@@ -196,6 +203,8 @@ class StateFieldDef:
             result["perAgent"] = self.per_agent
         if self.description:
             result["description"] = self.description
+        # Always include observable for τ²-bench state-constrained mode
+        result["observable"] = self.observable
         return result
 
     @classmethod
@@ -207,6 +216,7 @@ class StateFieldDef:
             default=data.get("default"),
             per_agent=data.get("perAgent", True),
             description=data.get("description", ""),
+            observable=data.get("observable", True),  # Default True for backward compat
         )
 
 

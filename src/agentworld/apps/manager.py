@@ -373,6 +373,84 @@ class SimulationAppManager:
             except Exception as e:
                 logger.exception(f"Failed to restore app {app_id}: {e}")
 
+    async def get_observable_state(
+        self,
+        agent_id: str,
+        app_ids: list[str] | None = None,
+    ) -> dict[str, Any]:
+        """Get observable state for an agent (τ²-bench state-constrained mode).
+
+        Returns only state fields marked as observable=True in the app's state schema.
+        This enables state-constrained user simulation where user agents can only
+        report what they actually "see" on their device.
+
+        Args:
+            agent_id: Agent ID
+            app_ids: Optional list of app IDs to include. If None, includes all apps.
+
+        Returns:
+            Dictionary of observable state organized by app_id, e.g.:
+            {
+                "airline_device": {
+                    "boarding_pass_visible": True,
+                    "seat_number": "12A",
+                    "flight_status": "On Time"
+                },
+                "paypal_account": {
+                    "balance": 150.00,
+                    "last_transaction": "$50 to Alice"
+                }
+            }
+        """
+        observable_state: dict[str, Any] = {}
+        target_apps = app_ids if app_ids else list(self._apps.keys())
+
+        for app_id in target_apps:
+            app = self._apps.get(app_id)
+            if app is None:
+                continue
+
+            try:
+                # Get app's state schema to check which fields are observable
+                app_state = {}
+                if hasattr(app, "get_agent_state"):
+                    full_state = await app.get_agent_state(agent_id)
+                elif hasattr(app, "get_full_state"):
+                    full_state = app.get_full_state()
+                    # Extract per-agent state if available
+                    per_agent = full_state.get("per_agent", {})
+                    full_state = per_agent.get(agent_id, full_state.get("shared", {}))
+                else:
+                    continue
+
+                # Check if app has state schema with observable fields
+                if hasattr(app, "_definition") and hasattr(app._definition, "state_schema"):
+                    state_schema = app._definition.state_schema
+                    # Filter to only observable fields
+                    for field_def in state_schema:
+                        if hasattr(field_def, "observable") and field_def.observable:
+                            field_name = field_def.name
+                            if field_name in full_state:
+                                app_state[field_name] = full_state[field_name]
+                elif hasattr(app, "state_schema"):
+                    # Legacy: state_schema as list of dicts
+                    for field_def in app.state_schema:
+                        if isinstance(field_def, dict) and field_def.get("observable", True):
+                            field_name = field_def.get("name", "")
+                            if field_name and field_name in full_state:
+                                app_state[field_name] = full_state[field_name]
+                else:
+                    # Fallback: return all state if no schema defined
+                    app_state = full_state
+
+                if app_state:
+                    observable_state[app_id] = app_state
+
+            except Exception as e:
+                logger.warning(f"Error getting observable state for {app_id}: {e}")
+
+        return observable_state
+
     def get_available_apps_prompt(self) -> str:
         """Generate prompt text describing available apps.
 

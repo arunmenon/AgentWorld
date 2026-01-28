@@ -90,6 +90,8 @@ def generate_system_prompt(
     name: str,
     background: str = "",
     additional_instructions: str = "",
+    observable_state: dict[str, any] | None = None,
+    state_constrained_mode: bool = False,
 ) -> str:
     """Generate a complete system prompt for an agent.
 
@@ -98,6 +100,11 @@ def generate_system_prompt(
         name: Name of the agent
         background: Optional background/context for the agent
         additional_instructions: Optional additional instructions
+        observable_state: Optional dictionary of state fields the agent can observe.
+            Used for τ²-bench state-constrained user simulation where user agents
+            can only report what they actually "see" on their device.
+        state_constrained_mode: If True, adds strict constraints about only
+            reporting observable state. Per τ²-bench requirements.
 
     Returns:
         Complete system prompt
@@ -113,6 +120,32 @@ def generate_system_prompt(
 
     # Response guidance
     sections.append(f"\nResponse Style:\n{generate_response_guidance(traits)}")
+
+    # Observable state section (τ²-bench state-constrained mode)
+    if observable_state is not None:
+        state_lines = ["\nYour Observable Device State:"]
+        state_lines.append("(This is what you can currently see on your device/screen)")
+        state_lines.append("---")
+        for key, value in observable_state.items():
+            # Format the value appropriately
+            if isinstance(value, bool):
+                display_value = "Yes" if value else "No"
+            elif value is None:
+                display_value = "(not shown)"
+            else:
+                display_value = str(value)
+            state_lines.append(f"  • {key}: {display_value}")
+        state_lines.append("---")
+
+        if state_constrained_mode:
+            state_lines.append("")
+            state_lines.append("IMPORTANT STATE CONSTRAINTS:")
+            state_lines.append("- You can ONLY report information shown in your observable state above.")
+            state_lines.append("- You CANNOT know or guess information not displayed on your device.")
+            state_lines.append("- If asked about something not in your observable state, say you cannot see it.")
+            state_lines.append("- Do NOT hallucinate or invent device information.")
+
+        sections.append("\n".join(state_lines))
 
     # Additional instructions
     if additional_instructions:

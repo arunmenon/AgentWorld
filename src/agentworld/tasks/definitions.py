@@ -21,8 +21,23 @@ class FaultAssignment(str, Enum):
     TASK = "task"                # Task definition issue
 
 
+class FaultCategory(str, Enum):
+    """High-level error category for τ²-bench analysis.
+
+    Per τ²-bench requirements, errors are grouped into three categories
+    for fine-grained error analysis.
+    """
+    REASONING = "reasoning"        # Agent reasoning/planning errors
+    COMMUNICATION = "communication"  # Agent-user communication failures
+    EXECUTION = "execution"        # Environment/system errors
+
+
 class FaultType(str, Enum):
-    """What type of error occurred."""
+    """What type of error occurred.
+
+    Extended per τ²-bench (ADR-020.1) to include communication error
+    subcategories for dual-control scenarios.
+    """
     # Task completion
     GOAL_NOT_ACHIEVED = "goal_not_achieved"
     GOAL_PARTIAL = "goal_partial"
@@ -46,6 +61,83 @@ class FaultType(str, Enum):
     API_ERROR = "api_error"
     TIMEOUT = "timeout"
     SYSTEM_ERROR = "system_error"
+
+    # NEW: Communication error subcategories (τ²-bench)
+    # Agent gave vague or ambiguous instructions to user
+    INSTRUCTION_UNCLEAR = "instruction_unclear"
+    # Agent missed necessary steps in instructions
+    INSTRUCTION_INCOMPLETE = "instruction_incomplete"
+    # Agent gave incorrect instructions to user
+    INSTRUCTION_WRONG = "instruction_wrong"
+    # User interpreted agent's instructions incorrectly
+    USER_MISUNDERSTOOD = "user_misunderstood"
+    # User asked for clarification (indicates confusion)
+    USER_CONFUSED = "user_confused"
+    # User failed to perform the requested action
+    USER_ACTION_FAILED = "user_action_failed"
+
+    @property
+    def category(self) -> FaultCategory:
+        """Get the high-level category for this fault type.
+
+        Returns:
+            FaultCategory: reasoning, communication, or execution
+        """
+        communication_types = {
+            FaultType.INSTRUCTION_UNCLEAR,
+            FaultType.INSTRUCTION_INCOMPLETE,
+            FaultType.INSTRUCTION_WRONG,
+            FaultType.USER_MISUNDERSTOOD,
+            FaultType.USER_CONFUSED,
+            FaultType.USER_ACTION_FAILED,
+        }
+
+        execution_types = {
+            FaultType.API_ERROR,
+            FaultType.TIMEOUT,
+            FaultType.SYSTEM_ERROR,
+        }
+
+        if self in communication_types:
+            return FaultCategory.COMMUNICATION
+        elif self in execution_types:
+            return FaultCategory.EXECUTION
+        else:
+            return FaultCategory.REASONING
+
+    @classmethod
+    def get_communication_types(cls) -> list["FaultType"]:
+        """Get all communication-related fault types."""
+        return [
+            cls.INSTRUCTION_UNCLEAR,
+            cls.INSTRUCTION_INCOMPLETE,
+            cls.INSTRUCTION_WRONG,
+            cls.USER_MISUNDERSTOOD,
+            cls.USER_CONFUSED,
+            cls.USER_ACTION_FAILED,
+        ]
+
+    @classmethod
+    def get_reasoning_types(cls) -> list["FaultType"]:
+        """Get all reasoning-related fault types."""
+        return [
+            cls.GOAL_NOT_ACHIEVED,
+            cls.GOAL_PARTIAL,
+            cls.WRONG_ACTION,
+            cls.WRONG_PARAMS,
+            cls.MISSING_ACTION,
+            cls.EXTRA_ACTION,
+            cls.ACTION_ORDER,
+            cls.POLICY_VIOLATION,
+            cls.MISSING_CONFIRMATION,
+            cls.MISUNDERSTOOD_TASK,
+            cls.REASONING_ERROR,
+        ]
+
+    @classmethod
+    def get_execution_types(cls) -> list["FaultType"]:
+        """Get all execution/environment-related fault types."""
+        return [cls.API_ERROR, cls.TIMEOUT, cls.SYSTEM_ERROR]
 
 
 @dataclass
