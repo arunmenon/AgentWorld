@@ -994,6 +994,9 @@ PAYPAL_APP = {
 # Dual Control App Collections
 # =============================================================================
 
+# Import Emirates apps
+from agentworld.apps.evaluation.emirates_apps import EMIRATES_BACKEND, EMIRATES_APP
+
 DUAL_CONTROL_APPS = {
     # Airlines
     "airlines_backend": AIRLINES_BACKEND,
@@ -1001,6 +1004,9 @@ DUAL_CONTROL_APPS = {
     # PayPal
     "paypal_backend": PAYPAL_BACKEND,
     "paypal_app": PAYPAL_APP,
+    # Emirates
+    "emirates_backend": EMIRATES_BACKEND,
+    "emirates_app": EMIRATES_APP,
 }
 
 

@@ -86,6 +86,42 @@ _engine = None
 _session_factory = None
 
 
+def _run_migrations(engine) -> None:
+    """Run database migrations to add missing columns.
+
+    This handles schema evolution without a full migration framework.
+    """
+    from sqlalchemy import inspect, text
+
+    inspector = inspect(engine)
+
+    # Migration: Add ADR-020.1 access control columns to app_definitions
+    if "app_definitions" in inspector.get_table_names():
+        columns = {col["name"] for col in inspector.get_columns("app_definitions")}
+
+        with engine.connect() as conn:
+            # Add access_type column if missing
+            if "access_type" not in columns:
+                conn.execute(text(
+                    "ALTER TABLE app_definitions ADD COLUMN access_type VARCHAR(20) DEFAULT 'shared' NOT NULL"
+                ))
+                conn.commit()
+
+            # Add allowed_roles_json column if missing
+            if "allowed_roles_json" not in columns:
+                conn.execute(text(
+                    "ALTER TABLE app_definitions ADD COLUMN allowed_roles_json TEXT"
+                ))
+                conn.commit()
+
+            # Add state_type column if missing
+            if "state_type" not in columns:
+                conn.execute(text(
+                    "ALTER TABLE app_definitions ADD COLUMN state_type VARCHAR(20) DEFAULT 'shared' NOT NULL"
+                ))
+                conn.commit()
+
+
 def init_db(
     path: str | Path | None = None,
     echo: bool = False,
@@ -107,6 +143,9 @@ def init_db(
 
     # Create tables
     Base.metadata.create_all(_engine)
+
+    # Run migrations for existing databases
+    _run_migrations(_engine)
 
 
 def get_engine():

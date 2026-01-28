@@ -81,6 +81,13 @@ from agentworld.apps.evaluation.dual_control_apps import (
     get_customer_apps,
     DUAL_CONTROL_APPS,
 )
+from agentworld.apps.evaluation.emirates_apps import (
+    get_emirates_apps,
+    get_emirates_app,
+    get_emirates_backend_app,
+    get_emirates_customer_app,
+    EMIRATES_APPS,
+)
 
 __all__ = [
     # Quality
@@ -148,4 +155,10 @@ __all__ = [
     "get_service_agent_apps",
     "get_customer_apps",
     "DUAL_CONTROL_APPS",
+    # Emirates Apps
+    "get_emirates_apps",
+    "get_emirates_app",
+    "get_emirates_backend_app",
+    "get_emirates_customer_app",
+    "EMIRATES_APPS",
 ]
