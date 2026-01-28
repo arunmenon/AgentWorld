@@ -35,6 +35,8 @@ Thumbs.db
 .coverage
 htmlcov/
 .tox/
+web/playwright-report/
+web/test-results/
 
 # Environment
 .env
