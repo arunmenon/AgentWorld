@@ -40,11 +40,13 @@ interface RowData {
 }
 
 // Estimate message height based on content length
+// Messages are truncated in the UI with "Read more", so cap height
 function estimateMessageHeight(content: string): number {
   const baseHeight = 100 // Avatar, header, padding
   const charsPerLine = 60
   const lineHeight = 24
-  const lines = Math.ceil(content.length / charsPerLine)
+  const maxVisibleLines = 6 // Messages truncate after ~4-6 lines
+  const lines = Math.min(Math.ceil(content.length / charsPerLine), maxVisibleLines)
   return baseHeight + lines * lineHeight
 }
 
