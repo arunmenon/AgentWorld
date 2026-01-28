@@ -13,3 +13,9 @@ export {
   CoordinationPanel,
   CoordinationSummary,
 } from './CoordinationPanel'
+
+export {
+  ToolUseDisplay,
+  ToolUseDisplayCompact,
+} from './ToolUseDisplay'
+export type { ToolUseStatus, ToolUseDisplayProps } from './ToolUseDisplay'

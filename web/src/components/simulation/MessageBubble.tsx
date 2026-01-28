@@ -1,6 +1,7 @@
 import { useState, memo } from 'react'
-import { Copy, Check, ChevronDown, ChevronUp } from 'lucide-react'
+import { Copy, Check, ChevronDown, ChevronUp, Target } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import type { AgentRole } from '@/lib/api'
 
 export interface MessageBubbleProps {
   id: string
@@ -13,6 +14,43 @@ export interface MessageBubbleProps {
   isAlternate?: boolean
   avatarColor?: string
   onCopy?: (content: string) => void
+  /** Agent role for dual-control styling (τ²-bench) */
+  senderRole?: AgentRole
+  receiverRole?: AgentRole
+  /** Coordination event marker */
+  coordination?: {
+    type: 'instruction' | 'action' | 'confirmation'
+    expectedAction?: string
+    actualAction?: string
+    status?: 'pending' | 'complete' | 'failed'
+  }
+  /** App action performed in this message */
+  appAction?: {
+    appId: string
+    appName?: string
+    appIcon?: string
+    action: string
+    status: 'success' | 'error'
+  }
+}
+
+// Role configuration for dual-control styling
+const roleConfig: Record<AgentRole, { emoji: string; color: string; label: string }> = {
+  service_agent: {
+    emoji: '🎧',
+    color: 'text-purple-600 dark:text-purple-400',
+    label: 'Service Agent',
+  },
+  customer: {
+    emoji: '📱',
+    color: 'text-green-600 dark:text-green-400',
+    label: 'Customer',
+  },
+  peer: {
+    emoji: '👥',
+    color: 'text-blue-600 dark:text-blue-400',
+    label: 'Peer',
+  },
 }
 
 // Generate consistent colors from agent name
@@ -112,9 +150,18 @@ export const MessageBubble = memo(function MessageBubble({
   timestamp,
   isHighlighted = false,
   isAlternate = false,
+  senderRole,
+  receiverRole,
+  coordination,
+  appAction,
 }: MessageBubbleProps) {
   const displayName = senderName || 'Unknown'
   const colors = getAgentColor(displayName)
+  const senderRoleConfig = senderRole ? roleConfig[senderRole] : null
+
+  // Check if this is a coordination instruction (service agent giving instructions)
+  const isCoordinationInstruction = coordination?.type === 'instruction'
+  const isCoordinationAction = coordination?.type === 'action'
 
   return (
     <div
@@ -125,15 +172,26 @@ export const MessageBubble = memo(function MessageBubble({
       )}
     >
       {/* Avatar */}
-      <div
-        className={cn(
-          'flex-shrink-0 w-9 h-9 rounded-full flex items-center justify-center',
-          colors.avatar
+      <div className="relative">
+        <div
+          className={cn(
+            'flex-shrink-0 w-9 h-9 rounded-full flex items-center justify-center',
+            colors.avatar
+          )}
+        >
+          <span className="text-sm font-semibold text-white">
+            {displayName.charAt(0).toUpperCase()}
+          </span>
+        </div>
+        {/* Role indicator badge */}
+        {senderRoleConfig && senderRole !== 'peer' && (
+          <span
+            className="absolute -bottom-1 -right-1 text-xs"
+            title={senderRoleConfig.label}
+          >
+            {senderRoleConfig.emoji}
+          </span>
         )}
-      >
-        <span className="text-sm font-semibold text-white">
-          {displayName.charAt(0).toUpperCase()}
-        </span>
       </div>
 
       {/* Message content */}
@@ -147,9 +205,26 @@ export const MessageBubble = memo(function MessageBubble({
             isAlternate && 'flex-row-reverse'
           )}
         >
-          <span className="font-semibold text-sm">{displayName}</span>
+          <span className={cn('font-semibold text-sm', senderRoleConfig?.color)}>
+            {displayName}
+          </span>
+          {/* Role badge for non-peer roles */}
+          {senderRoleConfig && senderRole !== 'peer' && (
+            <span
+              className={cn(
+                'text-xs px-1.5 py-0.5 rounded',
+                senderRole === 'service_agent'
+                  ? 'bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400'
+                  : 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400'
+              )}
+            >
+              {senderRoleConfig.label}
+            </span>
+          )}
           {receiverName && (
-            <span className="text-xs text-foreground-muted">to {receiverName}</span>
+            <span className="text-xs text-foreground-muted">
+              to {receiverRole && receiverRole !== 'peer' ? `${roleConfig[receiverRole].emoji} ` : ''}{receiverName}
+            </span>
           )}
           {timestamp && (
             <span className="text-xs text-foreground-muted">
@@ -159,18 +234,87 @@ export const MessageBubble = memo(function MessageBubble({
           <CopyButton text={content} />
         </div>
 
+        {/* Coordination instruction indicator */}
+        {isCoordinationInstruction && (
+          <div className="flex items-center gap-1 mb-1 text-xs text-yellow-600 dark:text-yellow-400">
+            <Target className="h-3 w-3" />
+            <span>Coordination instruction</span>
+            {coordination.expectedAction && (
+              <code className="px-1 py-0.5 rounded bg-yellow-100 dark:bg-yellow-900/30 text-xs">
+                {coordination.expectedAction}
+              </code>
+            )}
+          </div>
+        )}
+
         {/* Bubble */}
         <div
           className={cn(
             'p-4 rounded-2xl border',
             colors.bg,
             colors.border,
-            isAlternate ? 'rounded-tr-md' : 'rounded-tl-md'
+            isAlternate ? 'rounded-tr-md' : 'rounded-tl-md',
+            // Coordination styling
+            isCoordinationInstruction && 'ring-2 ring-yellow-400/50',
+            isCoordinationAction && coordination.status === 'complete' && 'ring-2 ring-green-400/50',
+            isCoordinationAction && coordination.status === 'failed' && 'ring-2 ring-red-400/50'
           )}
         >
           <div className="text-sm leading-relaxed">
             <MessageContent content={content} />
           </div>
+
+          {/* App action display */}
+          {appAction && (
+            <div
+              className={cn(
+                'mt-3 pt-3 border-t flex items-center gap-2 text-xs',
+                appAction.status === 'success'
+                  ? 'border-green-200 dark:border-green-800'
+                  : 'border-red-200 dark:border-red-800'
+              )}
+            >
+              <span>{appAction.appIcon || '🔧'}</span>
+              <code className="px-1.5 py-0.5 rounded bg-background">
+                {appAction.action}
+              </code>
+              <span
+                className={cn(
+                  'font-medium',
+                  appAction.status === 'success'
+                    ? 'text-green-600 dark:text-green-400'
+                    : 'text-red-600 dark:text-red-400'
+                )}
+              >
+                {appAction.status === 'success' ? '✓ Success' : '✗ Failed'}
+              </span>
+            </div>
+          )}
+
+          {/* Coordination action result */}
+          {isCoordinationAction && coordination.status && (
+            <div
+              className={cn(
+                'mt-3 pt-3 border-t flex items-center gap-2 text-xs',
+                coordination.status === 'complete'
+                  ? 'border-green-200 dark:border-green-800 text-green-600 dark:text-green-400'
+                  : 'border-red-200 dark:border-red-800 text-red-600 dark:text-red-400'
+              )}
+            >
+              {coordination.status === 'complete' ? (
+                <>✅ Handoff complete</>
+              ) : (
+                <>
+                  ❌ Handoff failed
+                  {coordination.actualAction && (
+                    <span className="text-foreground-muted">
+                      (performed: <code>{coordination.actualAction}</code>)
+                    </span>
+                  )}
+                </>
+              )}
+            </div>
+          )}
         </div>
       </div>
     </div>
