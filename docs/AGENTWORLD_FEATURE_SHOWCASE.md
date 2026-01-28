@@ -290,33 +290,68 @@ actions:
 
 #### App Studio UI
 
-No-code app builder with 4-step wizard:
+No-code app builder with comprehensive 4-step wizard for creating sophisticated agent-interactive apps:
 
-1. **Info Step**: Name, description, category
-2. **State Step**: Define data schema visually
-3. **Actions Step**: Define operations and parameters
-4. **Logic Step**: Visual logic builder with drag-and-drop
+##### Step 1: Template Selection
 
-![App Studio Wizard](images/agentworld-appstudio-wizard.png)
+Choose from pre-built templates or start from scratch:
 
-*4-step creation wizard with template selection (Payment, Shopping, Email, Calendar, Messaging, Blank)*
+![Template Selection](images/appstudio-template.png)
 
-![Actions Step](images/agentworld-appstudio-actions.png)
+*Template gallery offering Payment App (4 actions), Shopping App (5 actions), Email App (4 actions), Calendar App (4 actions), Messaging App (3 actions), or Blank App for custom creation*
 
-*Actions configuration showing defined operations with parameters and logic indicators*
+##### Step 2: App Details & Access Control
 
-![Logic Builder](images/agentworld-appstudio-logic-builder.png)
+Configure app identity and sophisticated access control:
 
-*Expanded action view showing parameters, types, and logic flow (validate → update → notify → return)*
+![App Info](images/appstudio-info.png)
 
-**Test Sandbox:**
+*App configuration with name, ID (auto-generated), description, category selection, and custom icon picker*
+
+**Access Control Configuration:**
+
+![Access Control](images/appstudio-access-control.png)
+
+*Fine-grained access control with three access modes and two state management options:*
+
+| Access Type | Description | Best For |
+|-------------|-------------|----------|
+| **Shared (Default)** | All agents can access | Chat systems, shared resources |
+| **Role-Restricted** | Only specific roles can access | Backend systems, admin tools |
+| **Per-Agent Instance** | Each agent gets isolated copy | Personal devices, individual accounts |
+
+| State Type | Description |
+|------------|-------------|
+| **Shared State** | Single state shared by all agents (e.g., customer DB) |
+| **Per-Agent State** | Each agent has isolated state (e.g., personal device) |
+
+##### Step 3: Actions Definition
+
+Define what agents can do with this app:
+
+![Actions List](images/appstudio-actions-list.png)
+
+*Actions overview showing operation type (WRITE/READ), logic indicators, descriptions, and parameter counts*
+
+**Expanded Action View:**
+
+![Action Details](images/appstudio-action-details.png)
+
+*Detailed action configuration showing:*
+- **Parameters**: Typed parameters with required/optional markers (`to` string*, `amount` number*, `note` string)
+- **Logic Flow**: Visual pipeline showing steps (`validate → validate → update → update → notify → return`)
+
+##### Step 4: Test Sandbox
+
+**Test Sandbox Features:**
 - Execute actions against simulated state
 - State snapshots before/after
 - Debug mode with step-through
+- Real-time state monitoring
 
 ![Test Sandbox](images/agentworld-appstudio-sandbox.png)
 
-*Test sandbox with agent selection, action execution, and real-time state monitoring*
+*Interactive test sandbox with agent selection, action execution panel, and live state visualization*
 
 ---
 

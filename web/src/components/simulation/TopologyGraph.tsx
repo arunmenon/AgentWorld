@@ -151,12 +151,10 @@ export const TopologyGraph = memo(function TopologyGraph({
       }
 
       const label = node.name
-      const fontSize = 12 / globalScale
-      // Make nodes larger when labels are hidden (for better visibility)
-      const sizeMultiplier = showAllLabels ? 1 : 1.3
-      // Make selected/hovered nodes slightly larger
-      const baseRadius = Math.max(8, Math.min(20, 8 + node.messageCount / 2)) * sizeMultiplier
-      const nodeRadius = (node.isSelected || node.isHovered) ? baseRadius * 1.2 : baseRadius
+      const fontSize = 9 / globalScale
+      // Much smaller node sizes to fit properly in container
+      const baseRadius = Math.max(3, Math.min(6, 3 + node.messageCount / 5))
+      const nodeRadius = (node.isSelected || node.isHovered) ? baseRadius * 1.1 : baseRadius
 
       // Determine if we should show the label for this node
       const shouldShowLabel = showAllLabels || node.isSelected || node.isHovered
@@ -165,27 +163,27 @@ export const TopologyGraph = memo(function TopologyGraph({
       if (node.isSelected) {
         // Outer glow ring
         ctx.beginPath()
-        ctx.arc(node.x, node.y, nodeRadius + 8 / globalScale, 0, 2 * Math.PI)
+        ctx.arc(node.x, node.y, nodeRadius + 5 / globalScale, 0, 2 * Math.PI)
         ctx.strokeStyle = node.color
-        ctx.lineWidth = 3 / globalScale
+        ctx.lineWidth = 2 / globalScale
         ctx.globalAlpha = 0.4
         ctx.stroke()
         ctx.globalAlpha = 1
 
         // Middle ring
         ctx.beginPath()
-        ctx.arc(node.x, node.y, nodeRadius + 4 / globalScale, 0, 2 * Math.PI)
+        ctx.arc(node.x, node.y, nodeRadius + 2.5 / globalScale, 0, 2 * Math.PI)
         ctx.strokeStyle = '#ffffff'
-        ctx.lineWidth = 2 / globalScale
+        ctx.lineWidth = 1.5 / globalScale
         ctx.stroke()
       }
 
       // Draw hover ring (subtle)
       if (node.isHovered && !node.isSelected) {
         ctx.beginPath()
-        ctx.arc(node.x, node.y, nodeRadius + 4 / globalScale, 0, 2 * Math.PI)
+        ctx.arc(node.x, node.y, nodeRadius + 2.5 / globalScale, 0, 2 * Math.PI)
         ctx.strokeStyle = node.color
-        ctx.lineWidth = 2 / globalScale
+        ctx.lineWidth = 1.5 / globalScale
         ctx.globalAlpha = 0.6
         ctx.stroke()
         ctx.globalAlpha = 1
@@ -232,9 +230,9 @@ export const TopologyGraph = memo(function TopologyGraph({
 
         // Draw label background
         const textWidth = ctx.measureText(label).width
-        const bgPadding = 2 / globalScale
+        const bgPadding = 1.5 / globalScale
         const bgHeight = fontSize + bgPadding * 2
-        const bgY = node.y + nodeRadius + 4 / globalScale
+        const bgY = node.y + nodeRadius + 3 / globalScale
 
         ctx.fillStyle = 'rgba(0, 0, 0, 0.7)'
         ctx.fillRect(
@@ -251,16 +249,16 @@ export const TopologyGraph = memo(function TopologyGraph({
 
       // Draw message count badge if > 0
       if (node.messageCount > 0) {
-        const badgeRadius = 6 / globalScale
-        const badgeX = node.x + nodeRadius * 0.7
-        const badgeY = node.y - nodeRadius * 0.7
+        const badgeRadius = 4 / globalScale
+        const badgeX = node.x + nodeRadius * 0.8
+        const badgeY = node.y - nodeRadius * 0.8
 
         ctx.beginPath()
         ctx.arc(badgeX, badgeY, badgeRadius, 0, 2 * Math.PI)
         ctx.fillStyle = '#22c55e'
         ctx.fill()
 
-        ctx.font = `bold ${8 / globalScale}px Inter, sans-serif`
+        ctx.font = `bold ${6 / globalScale}px Inter, sans-serif`
         ctx.fillStyle = '#fff'
         ctx.fillText(String(node.messageCount), badgeX, badgeY)
       }
@@ -352,9 +350,9 @@ export const TopologyGraph = memo(function TopologyGraph({
         linkCanvasObject={linkCanvasObject}
         onNodeClick={handleNodeClick}
         onNodeHover={handleNodeHover}
-        nodeRelSize={8}
-        linkDirectionalParticles={2}
-        linkDirectionalParticleWidth={2}
+        nodeRelSize={4}
+        linkDirectionalParticles={1}
+        linkDirectionalParticleWidth={1}
         linkDirectionalParticleSpeed={0.005}
         cooldownTicks={100}
         onEngineStop={() => graphRef.current?.zoomToFit(200)}
