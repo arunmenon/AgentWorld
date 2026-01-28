@@ -14,6 +14,9 @@ import {
   Brain,
   Rocket,
   BookOpen,
+  Target,
+  X,
+  ClipboardList,
 } from 'lucide-react'
 import {
   Card,
@@ -30,9 +33,10 @@ import {
   confirm,
 } from '@/components/ui'
 import { cn } from '@/lib/utils'
-import { api } from '@/lib/api'
+import { api, type AgentRole, type DualControlTaskDefinition } from '@/lib/api'
 import { templates, type SimulationTemplate } from '@/lib/templates'
 import { AppsSection, type SimulationAppConfig } from '@/components/simulation/apps'
+import { RoleSelector, RoleBadge } from '@/components/simulation/roles'
 
 const iconMap: Record<string, React.ElementType> = {
   'building-2': Building2,
@@ -46,6 +50,8 @@ const iconMap: Record<string, React.ElementType> = {
 interface AgentConfig {
   name: string
   background: string
+  /** Agent role for dual-control simulations (τ²-bench) */
+  role: AgentRole
   traits: {
     openness: number
     conscientiousness: number
@@ -58,6 +64,7 @@ interface AgentConfig {
 const defaultAgent: AgentConfig = {
   name: '',
   background: '',
+  role: 'peer',
   traits: {
     openness: 0.5,
     conscientiousness: 0.5,
@@ -117,8 +124,8 @@ export default function SimulationCreate() {
   const [steps, setSteps] = useState(10)
   const [initialPrompt, setInitialPrompt] = useState('')
   const [agents, setAgents] = useState<AgentConfig[]>([
-    { ...defaultAgent, name: 'Alice' },
-    { ...defaultAgent, name: 'Bob' },
+    { ...defaultAgent, name: 'Alice', role: 'peer' },
+    { ...defaultAgent, name: 'Bob', role: 'peer' },
   ])
   const [errors, setErrors] = useState<ValidationErrors>({})
   const [touched, setTouched] = useState<Record<string, boolean>>({})
@@ -126,6 +133,8 @@ export default function SimulationCreate() {
   const [apps, setApps] = useState<SimulationAppConfig[]>([])
   const [selectedTemplate, setSelectedTemplate] = useState<string | null>(null)
   const [showTemplates, setShowTemplates] = useState(true)
+  const [selectedTask, setSelectedTask] = useState<DualControlTaskDefinition | null>(null)
+  const [showTaskPicker, setShowTaskPicker] = useState(false)
 
   // Apply a template to the form
   const applyTemplate = (template: SimulationTemplate) => {
@@ -135,6 +144,7 @@ export default function SimulationCreate() {
     setAgents(template.agents.map(a => ({
       name: a.name,
       background: a.background,
+      role: (a as { role?: AgentRole }).role || 'peer',
       traits: a.traits,
     })))
     setSelectedTemplate(template.id)
@@ -150,8 +160,8 @@ export default function SimulationCreate() {
     setSteps(10)
     setInitialPrompt('')
     setAgents([
-      { ...defaultAgent, name: 'Alice' },
-      { ...defaultAgent, name: 'Bob' },
+      { ...defaultAgent, name: 'Alice', role: 'peer' },
+      { ...defaultAgent, name: 'Bob', role: 'peer' },
     ])
     setApps([])
     setSelectedTemplate(null)
@@ -160,12 +170,61 @@ export default function SimulationCreate() {
     setTouched({})
   }
 
+  // Apply a dual-control task for evaluation
+  const applyTask = (task: DualControlTaskDefinition) => {
+    setName(`${task.name} - Trial`)
+    setSteps(task.max_turns)
+    setInitialPrompt(task.description)
+
+    // Set up agents based on task roles
+    const taskAgents: AgentConfig[] = [
+      {
+        ...defaultAgent,
+        name: 'Service Agent',
+        background: task.agent_instruction,
+        role: task.agent_role as AgentRole,
+      },
+      {
+        ...defaultAgent,
+        name: 'Customer',
+        background: task.user_instruction,
+        role: task.user_role as AgentRole,
+      },
+    ]
+    setAgents(taskAgents)
+
+    // Note: Apps should be added manually through the Apps section
+    // The task defines which apps are needed: agent_apps and user_apps
+    // Clearing apps to let user add them via the picker
+    setApps([])
+
+    setSelectedTask(task)
+    setSelectedTemplate(null)
+    setShowTemplates(false)
+    setShowTaskPicker(false)
+    setErrors({})
+    setTouched({})
+    toast.success('Task applied', `"${task.name}" configuration loaded for evaluation.`)
+  }
+
+  // Clear task selection
+  const clearTask = () => {
+    setSelectedTask(null)
+  }
+
   // Fetch personas for the picker
   const { data: personasData } = useQuery({
     queryKey: ['personas'],
     queryFn: () => api.getPersonas(),
   })
   const personas = personasData?.personas || []
+
+  // Fetch dual-control tasks for evaluation mode
+  const { data: tasksData } = useQuery({
+    queryKey: ['dual-control-tasks'],
+    queryFn: () => api.getDualControlTasks({ per_page: 50 }),
+  })
+  const availableTasks = tasksData?.tasks || []
 
   const createMutation = useMutation({
     mutationFn: api.createSimulation,
@@ -206,10 +265,11 @@ export default function SimulationCreate() {
     setAgents([...agents, { ...defaultAgent, name: `Agent ${agents.length + 1}` }])
   }
 
-  const addPersonaAsAgent = (persona: { name: string; background?: string; traits?: AgentConfig['traits'] }) => {
+  const addPersonaAsAgent = (persona: { name: string; background?: string; role?: AgentRole; traits?: AgentConfig['traits'] }) => {
     setAgents([...agents, {
       name: persona.name,
       background: persona.background || '',
+      role: persona.role || 'peer',
       traits: persona.traits || defaultAgent.traits,
     }])
     setShowPersonaPicker(false)
@@ -270,12 +330,15 @@ export default function SimulationCreate() {
       agents: agents.map((a) => ({
         name: a.name,
         background: a.background,
+        role: a.role,
         traits: a.traits,
       })),
       apps: apps.length > 0 ? apps.map((a) => ({
         app_id: a.app_id,
         config: a.config,
       })) : undefined,
+      // Include task_id for evaluation mode (τ²-bench)
+      task_id: selectedTask?.task_id,
     })
   }
 
@@ -342,7 +405,7 @@ export default function SimulationCreate() {
                 )
               })}
             </div>
-            <div className="mt-4 pt-4 border-t border-border">
+            <div className="mt-4 pt-4 border-t border-border flex items-center justify-between">
               <button
                 type="button"
                 onClick={() => setShowTemplates(false)}
@@ -350,6 +413,16 @@ export default function SimulationCreate() {
               >
                 Or start from scratch
               </button>
+              {availableTasks.length > 0 && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setShowTaskPicker(true)}
+                >
+                  <Target className="h-4 w-4 mr-2" />
+                  Run Evaluation Task
+                </Button>
+              )}
             </div>
           </CardContent>
         </Card>
@@ -376,15 +449,66 @@ export default function SimulationCreate() {
       )}
 
       {/* Show templates button when hidden */}
-      {!showTemplates && !selectedTemplate && (
-        <Button
-          variant="outline"
-          className="mb-6"
-          onClick={() => setShowTemplates(true)}
-        >
-          <Sparkles className="h-4 w-4 mr-2" />
-          Browse Templates
-        </Button>
+      {!showTemplates && !selectedTemplate && !selectedTask && (
+        <div className="flex gap-2 mb-6">
+          <Button
+            variant="outline"
+            onClick={() => setShowTemplates(true)}
+          >
+            <Sparkles className="h-4 w-4 mr-2" />
+            Browse Templates
+          </Button>
+          {availableTasks.length > 0 && (
+            <Button
+              variant="outline"
+              onClick={() => setShowTaskPicker(true)}
+            >
+              <Target className="h-4 w-4 mr-2" />
+              Run Evaluation Task
+            </Button>
+          )}
+        </div>
+      )}
+
+      {/* Selected Task Banner */}
+      {selectedTask && (
+        <Card className="mb-6 border-green-500/30 bg-green-500/5">
+          <CardContent className="p-4">
+            <div className="flex items-start justify-between">
+              <div className="flex items-start gap-3">
+                <div className="h-10 w-10 rounded-lg bg-green-500/20 flex items-center justify-center flex-shrink-0">
+                  <Target className="h-5 w-5 text-green-500" />
+                </div>
+                <div>
+                  <div className="flex items-center gap-2 mb-1">
+                    <span className="font-medium">{selectedTask.name}</span>
+                    <Badge variant="outline" className="text-xs bg-green-500/10 text-green-600 border-green-500/30">
+                      τ²-bench Evaluation
+                    </Badge>
+                  </div>
+                  <p className="text-sm text-foreground-muted mb-2">
+                    {selectedTask.domain} • {selectedTask.difficulty} • {selectedTask.required_handoffs.length} handoffs
+                  </p>
+                  <div className="text-xs text-foreground-muted space-y-1">
+                    <p>
+                      <strong>Recommended Apps:</strong>{' '}
+                      {[...selectedTask.agent_apps, ...selectedTask.user_apps]
+                        .filter((v, i, a) => a.indexOf(v) === i)
+                        .join(', ') || 'None specified'}
+                    </p>
+                    <p>
+                      <strong>Roles:</strong> 🎧 {selectedTask.agent_role} guides 📱 {selectedTask.user_role}
+                    </p>
+                  </div>
+                </div>
+              </div>
+              <Button variant="ghost" size="sm" onClick={clearTask}>
+                <X className="h-4 w-4 mr-1" />
+                Clear
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
       )}
 
       <form onSubmit={handleSubmit} className="space-y-6">
@@ -483,7 +607,10 @@ export default function SimulationCreate() {
                 className="p-4 rounded-lg border border-border space-y-4 group relative"
               >
                 <div className="flex items-center justify-between">
-                  <h4 className="font-medium">Agent {index + 1}</h4>
+                  <div className="flex items-center gap-3">
+                    <h4 className="font-medium">Agent {index + 1}</h4>
+                    <RoleBadge role={agent.role} size="sm" />
+                  </div>
                   <Button
                     type="button"
                     variant="ghost"
@@ -499,7 +626,7 @@ export default function SimulationCreate() {
                   </Button>
                 </div>
 
-                <div className="grid gap-4 md:grid-cols-2">
+                <div className="grid gap-4 md:grid-cols-3">
                   <div className="space-y-2">
                     <Label>Name</Label>
                     <Input
@@ -509,6 +636,13 @@ export default function SimulationCreate() {
                       }
                       placeholder="Agent name"
                       required
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <RoleSelector
+                      value={agent.role}
+                      onChange={(role) => updateAgent(index, { role })}
+                      showHelp={index === 0}
                     />
                   </div>
                   <div className="space-y-2">
@@ -575,7 +709,11 @@ export default function SimulationCreate() {
         </Card>
 
         {/* Apps Section */}
-        <AppsSection apps={apps} onChange={setApps} />
+        <AppsSection
+          apps={apps}
+          onChange={setApps}
+          agentRoles={agents.map((a) => a.role)}
+        />
 
         {/* Submit */}
         <div className="flex justify-end gap-4">
@@ -633,6 +771,91 @@ export default function SimulationCreate() {
             </div>
             <div className="mt-4 flex justify-end">
               <Button variant="ghost" onClick={() => setShowPersonaPicker(false)}>
+                Cancel
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Task Picker Modal */}
+      {showTaskPicker && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center">
+          <div
+            className="fixed inset-0 bg-black/50 backdrop-blur-sm"
+            onClick={() => setShowTaskPicker(false)}
+          />
+          <div className="relative z-50 w-full max-w-2xl rounded-lg border border-border bg-background-secondary p-6 shadow-lg animate-in">
+            <div className="flex items-center gap-3 mb-4">
+              <div className="h-10 w-10 rounded-lg bg-green-500/10 flex items-center justify-center">
+                <Target className="h-5 w-5 text-green-500" />
+              </div>
+              <div>
+                <h3 className="text-lg font-semibold">Select Evaluation Task</h3>
+                <p className="text-sm text-foreground-muted">
+                  Run a τ²-bench dual-control evaluation scenario
+                </p>
+              </div>
+            </div>
+
+            <div className="space-y-2 max-h-96 overflow-y-auto">
+              {availableTasks.map((task) => (
+                <button
+                  key={task.id}
+                  type="button"
+                  onClick={() => applyTask(task)}
+                  className="w-full p-4 rounded-lg border border-border hover:border-green-500/50 hover:bg-green-500/5 transition-colors text-left"
+                >
+                  <div className="flex items-start justify-between mb-2">
+                    <div>
+                      <h4 className="font-medium">{task.name}</h4>
+                      <p className="text-sm text-foreground-muted mt-0.5 line-clamp-2">
+                        {task.description}
+                      </p>
+                    </div>
+                    <Badge variant="outline" className="ml-2 flex-shrink-0">
+                      {task.difficulty}
+                    </Badge>
+                  </div>
+                  <div className="flex items-center gap-4 text-xs text-foreground-muted mt-2">
+                    <span className="flex items-center gap-1">
+                      <ClipboardList className="h-3 w-3" />
+                      {task.domain}
+                    </span>
+                    <span>
+                      🎧 {task.agent_role} → 📱 {task.user_role}
+                    </span>
+                    <span>
+                      {task.required_handoffs.length} handoffs
+                    </span>
+                    <span>
+                      Max {task.max_turns} turns
+                    </span>
+                  </div>
+                  {task.tags.length > 0 && (
+                    <div className="flex gap-1 mt-2">
+                      {task.tags.slice(0, 3).map((tag) => (
+                        <Badge key={tag} variant="outline" className="text-xs">
+                          {tag}
+                        </Badge>
+                      ))}
+                    </div>
+                  )}
+                </button>
+              ))}
+              {availableTasks.length === 0 && (
+                <div className="text-center py-8">
+                  <Target className="h-12 w-12 text-foreground-muted mx-auto mb-3" />
+                  <p className="text-foreground-muted">No evaluation tasks available</p>
+                  <p className="text-sm text-foreground-muted mt-1">
+                    Create a task at <code>/tasks/new</code> first
+                  </p>
+                </div>
+              )}
+            </div>
+
+            <div className="mt-4 pt-4 border-t border-border flex justify-end">
+              <Button variant="ghost" onClick={() => setShowTaskPicker(false)}>
                 Cancel
               </Button>
             </div>

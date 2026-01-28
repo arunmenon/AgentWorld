@@ -21,6 +21,8 @@ class SimulationResponse(BaseModel):
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
     progress_percent: Optional[float] = None
+    # τ²-bench: Task reference for evaluation runs
+    task_id: Optional[str] = None
 
     class Config:
         from_attributes = True
@@ -61,6 +63,11 @@ class CreateSimulationRequest(BaseModel):
     topology_type: Optional[str] = Field(default="fully_connected")
     config_yaml: Optional[str] = None  # Full YAML configuration
     apps: Optional[list[AppConfigRequest]] = None  # Apps to add to simulation
+    # τ²-bench: Optional task reference for evaluation
+    task_id: Optional[str] = Field(
+        default=None,
+        description="Dual-control task ID for τ²-bench evaluation. When set, simulation runs as a task trial."
+    )
 
 
 class StepRequest(BaseModel):
