@@ -660,3 +660,140 @@ async def get_benchmark(benchmark_id: str):
         })
 
     return app_def
+
+
+@router.get("/app-definitions/{definition_id}/coverage")
+async def get_app_coverage(definition_id: str):
+    """Get coverage report for an app definition.
+
+    Analyzes how thoroughly the app's logic is covered by test scenarios.
+    Returns metrics for:
+    - Action coverage: percentage of actions called
+    - Branch coverage: percentage of BRANCH paths taken
+    - Logic block coverage: percentage of logic blocks executed
+
+    Note: This requires execution traces from previous test runs.
+    If no traces are available, returns baseline coverage with recommendations.
+
+    Args:
+        definition_id: App definition ID
+
+    Returns:
+        Coverage report with metrics and recommendations
+    """
+    from agentworld.apps.evaluation.coverage import (
+        CoverageReport,
+        analyze_coverage,
+    )
+
+    repo = get_repo()
+
+    # Get definition
+    definition = repo.get_app_definition(definition_id)
+    if not definition:
+        raise HTTPException(status_code=404, detail={
+            "code": "DEFINITION_NOT_FOUND",
+            "message": f"App definition '{definition_id}' not found",
+        })
+
+    # Parse definition
+    try:
+        full_def = definition.get("definition", {})
+        app_def = AppDefinition.from_dict(full_def)
+    except Exception as e:
+        raise HTTPException(status_code=400, detail={
+            "code": "INVALID_DEFINITION",
+            "message": f"Failed to load app definition: {str(e)}",
+        })
+
+    # For now, return baseline coverage (no execution traces)
+    # In a full implementation, this would retrieve stored execution traces
+    # from previous test runs stored in the database
+    empty_traces: list = []
+    report = analyze_coverage(app_def, empty_traces)
+
+    return report.to_dict()
+
+
+@router.get("/app-definitions/{definition_id}/compare/{version}")
+async def compare_app_versions(
+    definition_id: str,
+    version: int,
+):
+    """Compare current app version with a previous version.
+
+    Runs regression detection to identify:
+    - Breaking changes (tests that newly fail)
+    - Fixed tests (tests that now pass)
+    - Output changes (different but valid outputs)
+    - Performance changes
+    - Quality score changes
+
+    Args:
+        definition_id: App definition ID
+        version: Previous version to compare against
+
+    Returns:
+        Regression report with detailed comparison
+    """
+    from agentworld.apps.evaluation.regression import (
+        detect_regressions,
+        RegressionReport,
+    )
+    from agentworld.apps.evaluation.scenarios import TestScenario
+
+    repo = get_repo()
+
+    # Get current definition
+    definition = repo.get_app_definition(definition_id)
+    if not definition:
+        raise HTTPException(status_code=404, detail={
+            "code": "DEFINITION_NOT_FOUND",
+            "message": f"App definition '{definition_id}' not found",
+        })
+
+    current_version = definition.get("version", 1)
+    if version >= current_version:
+        raise HTTPException(status_code=400, detail={
+            "code": "INVALID_VERSION",
+            "message": f"Version {version} must be less than current version {current_version}",
+        })
+
+    # Get the specified version
+    old_version_data = repo.get_app_definition_version(definition_id, version)
+    if not old_version_data:
+        raise HTTPException(status_code=404, detail={
+            "code": "VERSION_NOT_FOUND",
+            "message": f"Version {version} not found for app '{definition_id}'",
+        })
+
+    # Parse both definitions
+    try:
+        current_def = definition.get("definition", {})
+        old_def = old_version_data.get("definition", {})
+
+        current_app_def = AppDefinition.from_dict(current_def)
+        old_app_def = AppDefinition.from_dict(old_def)
+
+        current_app = DynamicApp(current_app_def)
+        old_app = DynamicApp(old_app_def)
+    except Exception as e:
+        raise HTTPException(status_code=400, detail={
+            "code": "INVALID_DEFINITION",
+            "message": f"Failed to load app definitions: {str(e)}",
+        })
+
+    # For now, run with empty scenarios
+    # In a full implementation, this would load stored test scenarios
+    scenarios: list[TestScenario] = []
+
+    # Run regression detection
+    report = await detect_regressions(
+        app_old=old_app,
+        app_new=current_app,
+        scenarios=scenarios,
+        old_version=version,
+        new_version=current_version,
+    )
+
+    return report.to_dict()
