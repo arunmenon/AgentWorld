@@ -4,19 +4,22 @@
 
 ---
 
----
-
 ## Table of Contents
 
 1. [Executive Summary](#1-executive-summary)
 2. [Research Lineage & Academic Foundations](#2-research-lineage--academic-foundations)
 3. [Feature Catalog](#3-feature-catalog)
-   - [3.1 Core Simulation Framework](#31-core-simulation-framework)
-   - [3.2 App Framework & App Studio](#32-app-framework--app-studio)
-   - [3.3 Evaluation Framework](#33-evaluation-framework)
-   - [3.4 API & Integration Layer](#34-api--integration-layer)
-   - [3.5 Web Dashboard](#35-web-dashboard)
-4. [Value Proposition for Enterprise](#4-value-proposition-for-enterprise)
+   - [3.1 Agent System & Personas](#31-agent-system--personas)
+   - [3.2 Memory Architecture](#32-memory-architecture)
+   - [3.3 Network Topologies](#33-network-topologies)
+   - [3.4 Multi-LLM Support](#34-multi-llm-support)
+   - [3.5 Simulation Runtime](#35-simulation-runtime)
+   - [3.6 App Framework & App Studio](#36-app-framework--app-studio)
+   - [3.7 Evaluation Framework](#37-evaluation-framework)
+   - [3.8 Reasoning Visibility & Auditability](#38-reasoning-visibility--auditability)
+   - [3.9 Data Export & Training Pipeline](#39-data-export--training-pipeline)
+   - [3.10 Web Dashboard](#310-web-dashboard)
+4. [Value Proposition](#4-value-proposition)
 5. [Comparison with Industry Benchmarks](#5-comparison-with-industry-benchmarks)
 6. [Technical Architecture](#6-technical-architecture)
 7. [Implementation Status](#7-implementation-status)
@@ -28,23 +31,43 @@
 
 **AgentWorld** is a research-grade multi-agent simulation platform that enables enterprises to design, test, and evaluate AI agent systems at scale. Built on foundations from leading academic research—including Stanford's Generative Agents, Sierra Research's τ-bench evaluation framework, and Microsoft's TinyTroupe persona system—AgentWorld provides the only integrated solution combining true multi-agent support (N>2 agents), no-code app creation, and research-grade evaluation metrics.
 
-### Key Value Propositions
+---
 
-- **Research-Grade Evaluation**: Implements τ-bench's pass^k reliability metrics for statistically rigorous agent performance measurement
-- **Multi-Agent Orchestration**: Native support for complex N-agent scenarios with 5 network topology types
-- **No-Code App Studio**: Business users can create simulated app environments without writing code
-- **Enterprise Integration**: 100+ LLM models via LiteLLM, REST/WebSocket APIs, and 6 fine-tuning export formats
-- **Persona Depth**: Big Five personality traits with memory-reflection-planning architecture for realistic agent behavior
+### 🎯 Why AgentWorld?
+
+> **The only platform combining true multi-agent orchestration (N>2), no-code app creation, AND research-grade pass^k evaluation metrics in a single integrated system.**
+
+| What Makes Us Different | The AgentWorld Advantage |
+|------------------------|--------------------------|
+| **Other platforms limit you to 2 agents** | Run unlimited agents with 5 network topology types |
+| **Evaluation is an afterthought** | pass^k metrics tell you *exact* failure rates at scale |
+| **Building test environments requires coding** | App Studio lets anyone create environments in minutes |
+| **Personality is binary or absent** | Continuous Big Five traits (0.0-1.0) enable nuanced behavior |
+| **Memory is simple context windows** | Dual memory with episodic + semantic layers enables learning |
+
+---
+
+### Platform at a Glance
+
+| Metric | Value |
+|--------|-------|
+| **LLM Models Supported** | 100+ via LiteLLM |
+| **Network Topologies** | 5 types (mesh, hub-spoke, hierarchical, small-world, scale-free) |
+| **Export Formats** | 6 fine-tuning formats (OpenAI, Anthropic, ShareGPT, Alpaca, DPO, JSONL) |
+| **Preset Persona Archetypes** | 5 built-in (creative_innovator, analytical_thinker, cautious_skeptic, social_connector, detail_oriented) |
+| **Evaluation Dimensions** | pass^k reliability, fault classification, app quality scoring, policy compliance |
+| **App Templates** | 6 starter templates (Payment, Shopping, Email, Calendar, Messaging, Blank) |
 
 ### Capability Summary
 
 | Category | Capabilities |
 |----------|-------------|
-| **Agents** | Big Five personas, dual memory (episodic + semantic), reflection-planning cycles |
-| **Networks** | Mesh, hub-spoke, hierarchical, small-world, scale-free topologies |
-| **Apps** | Dynamic JSON-defined apps, declarative logic language, simulated payment/service apps |
-| **Evaluation** | pass^k metrics, state verification, fault classification, quality scoring |
-| **Integration** | 30+ REST endpoints, WebSocket real-time events, 6 export formats |
+| **Agents** | Big Five continuous traits, 5 preset archetypes, weighted cosine similarity matching, population generation with Gaussian distribution |
+| **Memory** | Dual memory (episodic + semantic), importance scoring (LLM or fast heuristic), weighted retrieval (α×relevance + β×recency + γ×importance), reflection triggers |
+| **Networks** | 5 topology types, NetworkX integration, centrality metrics (degree, betweenness, closeness, eigenvector), routing modes |
+| **Evaluation** | pass^k metrics, goal state verification, 3×18+ fault classification, policy engine, app quality scoring, A/B testing with Cohen's d |
+| **Apps** | JSON-defined apps, declarative logic language (7 directives), 3 access control modes, state isolation, loop safeguards |
+| **Export** | 6 formats, 3 redaction profiles, agent anonymization, DPO pair generation, export manifests with integrity hashes |
 
 ---
 
@@ -113,69 +136,110 @@ API-Based App Environments          ✅           ❌          ✅           ❌
 
 ## 3. Feature Catalog
 
-### 3.1 Core Simulation Framework
+### 3.1 Agent System & Personas
 
-#### Agent System (ADR-004)
+AgentWorld's agent system implements the Big Five personality model with continuous trait vectors (0.0-1.0) that influence agent behavior across all interactions.
 
-AgentWorld's agent system implements the Big Five personality model with trait vectors that influence agent behavior across all interactions.
+#### Big Five Trait Dimensions
 
-**Big Five Trait Dimensions:**
-- **Openness** (0-1): Creativity, curiosity, openness to experience
-- **Conscientiousness** (0-1): Organization, dependability, self-discipline
-- **Extraversion** (0-1): Sociability, assertiveness, positive emotions
-- **Agreeableness** (0-1): Cooperation, trust, helpfulness
-- **Neuroticism** (0-1): Emotional instability, anxiety, moodiness
+| Trait | Range | What It Influences |
+|-------|-------|-------------------|
+| **Openness** | 0.0-1.0 | Creativity, curiosity, openness to experience |
+| **Conscientiousness** | 0.0-1.0 | Organization, dependability, self-discipline |
+| **Extraversion** | 0.0-1.0 | Sociability, assertiveness, positive emotions |
+| **Agreeableness** | 0.0-1.0 | Cooperation, trust, helpfulness |
+| **Neuroticism** | 0.0-1.0 | Emotional instability, anxiety, moodiness |
 
-**Features:**
-- Trait vectors with 0-1 normalized values
-- Custom traits support beyond Big Five
-- Trait-aware prompt generation
-- Personality influences response style, word choice, and decision-making
+#### 5 Preset Persona Archetypes
 
-**Example Persona Configuration:**
-```yaml
-agents:
-  - name: "Sarah Chen"
-    traits:
-      openness: 0.85
-      conscientiousness: 0.70
-      extraversion: 0.45
-      agreeableness: 0.80
-      neuroticism: 0.30
-    background: "Software engineer with 10 years experience"
+Start quickly with pre-configured personalities:
+
+| Archetype | Traits Profile | Best For |
+|-----------|---------------|----------|
+| **creative_innovator** | High openness (0.9), moderate extraversion (0.6) | Brainstorming, ideation |
+| **analytical_thinker** | High conscientiousness (0.85), low neuroticism (0.2) | Technical review, analysis |
+| **cautious_skeptic** | High neuroticism (0.7), low agreeableness (0.3) | Risk assessment, edge cases |
+| **social_connector** | High extraversion (0.9), high agreeableness (0.85) | Facilitation, coordination |
+| **detail_oriented** | High conscientiousness (0.95), low openness (0.3) | Compliance, documentation |
+
+#### Advanced Persona Features
+
+| Feature | Description |
+|---------|-------------|
+| **Custom Trait Extensions** | Add domain-specific traits beyond Big Five with metadata |
+| **Weighted Cosine Similarity** | Match agents to tasks based on trait compatibility |
+| **Population Generation** | Create diverse populations with controlled Gaussian distributions |
+| **5-Level Trait Interpolation** | Natural language prompts adapt to trait intensity levels |
+| **PersonaProfile** | Structured demographics including age, occupation, background |
+
+#### Agent Inspector
+
+![Agent Inspector with Personality Radar Chart](images/agentworld-simulation-agent-inspector.png?v=2)
+
+*Agent inspector panel showing Big Five personality traits as a radar chart with trait percentages, message history, and statistics*
+
+---
+
+### 3.2 Memory Architecture
+
+Based on Stanford's Generative Agents, AgentWorld implements a dual memory system that enables agents to learn and adapt over time.
+
+#### Dual Memory System
+
+| Memory Type | Purpose | Default Limit |
+|-------------|---------|---------------|
+| **Episodic (Observations)** | Stores raw experiences from conversations | 1,000 entries |
+| **Semantic (Reflections)** | Higher-level abstractions generated from observations | 100 entries |
+
+#### Memory Retrieval
+
+Memories are retrieved using a weighted scoring function:
+
 ```
-
-![Agent Inspector with Personality Radar Chart](images/agentworld-simulation-agent-inspector.png)
-
-*Agent inspector panel showing Big Five personality traits as a radar chart with trait percentages*
-
-#### Memory Architecture (ADR-006)
-
-Based on Stanford's Generative Agents, AgentWorld implements a dual memory system:
-
-**Episodic Memory (Observations):**
-- Stores raw experiences from conversations
-- Timestamped with recency decay
-- Importance scoring via LLM
-
-**Semantic Memory (Reflections):**
-- Higher-level abstractions generated from observations
-- Triggered when accumulated importance exceeds threshold (default: 150)
-- Enables long-term behavioral patterns
-
-**Retrieval Function:**
-```
-Score = α × Recency + β × Importance + γ × Relevance
+Score = α × Relevance + β × Recency + γ × Importance
 
 Where:
-- Recency: Exponential decay based on time since memory creation
-- Importance: LLM-assigned score (1-10) normalized
 - Relevance: Cosine similarity of embeddings to current context
+- Recency: Exponential decay based on time since creation
+- Importance: Scored value (1-10) normalized
 ```
 
-#### Network Topologies (ADR-005)
+#### Importance Scoring Options
 
-Five pre-built topology types for modeling communication constraints:
+| Method | Speed | Accuracy | Use Case |
+|--------|-------|----------|----------|
+| **LLM-Based** | Slower | Higher | Production, important conversations |
+| **Fast Heuristic** | Instant | Good | Development, high-volume scenarios |
+
+The fast heuristic uses keyword detection (emotions, decisions, names) for instant importance estimation without LLM calls.
+
+#### Memory Retention Policies
+
+| Policy | Behavior | Best For |
+|--------|----------|----------|
+| **Importance-Weighted** | Keep highest importance memories | Quality over quantity |
+| **FIFO (First-In-First-Out)** | Remove oldest memories first | Recency-focused scenarios |
+| **Recency-Decay** | Weighted by time with decay factor | Natural forgetting |
+
+#### Reflection Generation
+
+Reflections are automatically triggered when accumulated importance exceeds the threshold (default: 150). This enables agents to form higher-level abstractions from raw experiences.
+
+#### Embedding Support
+
+Multiple embedding models available via LiteLLM:
+- OpenAI text-embedding-3-small/large
+- Sentence-Transformers (local)
+- Cohere embed-v3
+- Custom embedding endpoints
+
+---
+
+### 3.3 Network Topologies
+
+AgentWorld provides first-class support for network topologies—a unique differentiator that enables realistic modeling of communication constraints.
+
+#### 5 Topology Types
 
 | Topology | Description | Use Case |
 |----------|-------------|----------|
@@ -185,183 +249,252 @@ Five pre-built topology types for modeling communication constraints:
 | **Small-World** | Clustered with shortcuts | Social networks, viral spread |
 | **Scale-Free** | Power-law degree distribution | Influencer networks, markets |
 
-![Topology Visualization](images/agentworld-simulation-topology.png?v=2)
+![Topology Visualization](images/agentworld-simulation-topology.png?v=3)
 
 *Force-directed network topology showing agents and their communication connections*
 
-**NetworkX Integration:**
-- `get_neighbors(agent)`: Returns agents an agent can communicate with
-- `can_communicate(a, b)`: Validates communication path exists
-- Network metrics: clustering coefficient, centrality measures, path lengths
+#### NetworkX Integration
 
-#### Multi-LLM Support (ADR-003)
+Full graph analysis capabilities:
 
-Via LiteLLM integration, AgentWorld supports 100+ models:
+| Metric | Description | Use |
+|--------|-------------|-----|
+| **Degree Centrality** | Number of direct connections | Identify well-connected agents |
+| **Betweenness Centrality** | Bridge between groups | Find information bottlenecks |
+| **Closeness Centrality** | Average distance to all others | Identify efficient spreaders |
+| **Eigenvector Centrality** | Connected to important nodes | Find influencers |
 
-| Provider | Models | Notes |
-|----------|--------|-------|
-| OpenAI | GPT-4o, GPT-4-turbo, GPT-3.5 | Production-grade |
-| Anthropic | Claude 3.5 Sonnet, Claude 3 Opus | Strong reasoning |
-| Google | Gemini Pro, Gemini Flash | Cost-effective |
-| Ollama | Llama 3, Mistral, Phi-3 | Local/on-premise |
-| Azure OpenAI | All OpenAI models | Enterprise compliance |
-| AWS Bedrock | Claude, Titan | AWS integration |
+#### Routing Modes
 
-**Features:**
-- Unified completion interface across providers
-- Automatic token counting and cost tracking
-- Response caching for development efficiency
-- Provider fallback chains
+| Mode | Behavior |
+|------|----------|
+| **Direct-Only** | Messages only to directly connected agents |
+| **Multi-Hop** | Messages can route through intermediaries |
+| **Broadcast** | Messages to all reachable agents |
+
+#### Graph Safety
+
+Automatic handling of disconnected graphs ensures simulations don't fail due to unreachable agents.
 
 ---
 
-### 3.2 App Framework & App Studio
+### 3.4 Multi-LLM Support
 
-#### Simulated Apps (ADR-017)
+Via LiteLLM integration, AgentWorld supports 100+ models from all major providers.
 
-Pre-built simulated applications for common enterprise scenarios:
+#### Supported Providers
 
-**Payment Apps:**
-- `PaymentApp`: Transfers, refunds, balance checks
-- `DisputeApp`: Dispute filing and resolution
-- `WalletApp`: Multi-currency wallet management
+| Provider | Example Models | Notes |
+|----------|---------------|-------|
+| **OpenAI** | GPT-4o, GPT-4-turbo, GPT-3.5 | Production-grade |
+| **Anthropic** | Claude 3.5 Sonnet, Claude 3 Opus | Strong reasoning |
+| **Google** | Gemini Pro, Gemini Flash | Cost-effective |
+| **Ollama** | Llama 3, Mistral, Phi-3 | Local/on-premise |
+| **Azure OpenAI** | All OpenAI models | Enterprise compliance |
+| **AWS Bedrock** | Claude, Titan | AWS integration |
 
-**Service Apps:**
-- `AirlineApp`: Bookings, changes, cancellations
-- `RetailApp`: Orders, returns, loyalty programs
-- `BankingApp`: Account management, transactions
+#### LLM Features
 
-Each app provides:
-- Stateful operations with ACID guarantees
-- Realistic error conditions
-- Policy enforcement (limits, restrictions)
-- Audit trails
+| Feature | Description |
+|---------|-------------|
+| **Automatic Token Counting** | TikToken integration for accurate usage tracking |
+| **Cost Estimation** | Vendor pricing tables for budget forecasting |
+| **Response Caching** | TTL + LRU eviction for development efficiency |
+| **Provider Fallback Chains** | Automatic failover between providers |
+| **Deterministic Mode** | Seeded execution for reproducibility |
 
-#### Dynamic App Engine (ADR-018)
+#### Response Caching
 
-Create custom apps via JSON definitions without code:
+Development efficiency through intelligent caching:
+- **TTL (Time-To-Live)**: Configurable expiration
+- **LRU Eviction**: Automatic cleanup when cache is full
+- **Cache Bypass**: Force fresh responses when needed
 
-```json
-{
-  "name": "TicketSupport",
-  "description": "Customer support ticket system",
-  "version": "1.0.0",
-  "state_schema": {
-    "tickets": { "type": "array", "items": { "$ref": "#/definitions/Ticket" } }
-  },
-  "actions": [
-    {
-      "name": "create_ticket",
-      "parameters": {
-        "subject": { "type": "string" },
-        "priority": { "type": "string", "enum": ["low", "medium", "high"] }
-      },
-      "returns": { "type": "object" }
-    }
-  ]
-}
+---
+
+### 3.5 Simulation Runtime
+
+#### Three-Phase Step Execution
+
+Each simulation step follows a consistent three-phase pattern:
+
+```
+PERCEIVE → ACT → COMMIT
+
+1. PERCEIVE: Agent observes environment and retrieves relevant memories
+2. ACT: Agent decides on action based on persona and context
+3. COMMIT: Changes are atomically committed to state
 ```
 
-#### Logic Language (ADR-019)
+#### Agent Ordering Strategies
 
-Declarative business logic for app behavior:
+| Strategy | Behavior | Use Case |
+|----------|----------|----------|
+| **Round-Robin** | Fixed sequential order | Predictable turn-taking |
+| **Random** | Shuffled each step | Natural conversations |
+| **Priority** | Based on agent priority values | Important agents first |
+| **Topology** | Based on network centrality | Influencers lead |
+| **Simultaneous** | All agents act in parallel | Concurrent scenarios |
 
-**Directives:**
-- `RETURN`: Return values from actions
-- `MUTATE`: Modify app state
-- `REQUIRE`: Validate preconditions
-- `DENY_IF`: Reject operations conditionally
-- `LOG`: Audit trail entries
+#### Runtime Features
 
-**Example Logic:**
+| Feature | Description |
+|---------|-------------|
+| **Checkpoint/Resume** | Save and restore simulation state |
+| **Deterministic Seeding** | Same seed = same results |
+| **Real-time WebSocket** | Live updates to connected clients |
+| **Per-Agent Tracking** | Individual cost and token metrics |
+
+#### Quick Step Controls
+
+The UI provides convenient stepping controls:
+- **+1 Step**: Single step execution
+- **+5 Steps**: Quick progression
+- **+10 Steps**: Medium progression
+- **+25 Steps**: Rapid progression
+
+![Simulation Detail](images/agentworld-simulation-detail.png?v=3)
+
+*Simulation detail view showing controls, topology, conversation stream, and panels*
+
+---
+
+### 3.6 App Framework & App Studio
+
+#### JSON-Defined Apps
+
+Create sophisticated agent-interactive apps without writing Python code:
+
 ```yaml
+name: "TicketSupport"
+description: "Customer support ticket system"
+version: "1.0.0"
+access_type: SHARED
+state_type: shared
+
+state_schema:
+  tickets: { type: array }
+
 actions:
-  transfer_funds:
-    logic:
-      - REQUIRE: "user.balance >= amount"
-        error: "Insufficient funds"
-      - DENY_IF: "amount > 10000 AND !user.verified"
-        error: "Large transfers require verification"
-      - MUTATE: "user.balance -= amount"
-      - MUTATE: "recipient.balance += amount"
-      - LOG: "Transfer of {amount} from {user.id} to {recipient.id}"
-      - RETURN: "{ success: true, new_balance: user.balance }"
+  - name: create_ticket
+    type: WRITE
+    parameters:
+      subject: { type: string, required: true }
+      priority: { type: string, enum: [low, medium, high] }
 ```
+
+#### Logic Language Directives
+
+7 declarative directives for defining app behavior:
+
+| Directive | Purpose | Example |
+|-----------|---------|---------|
+| **VALIDATE** | Check preconditions | `VALIDATE: "amount > 0"` |
+| **UPDATE** | Modify state | `UPDATE: "user.balance -= amount"` |
+| **NOTIFY** | Send notifications | `NOTIFY: "Transfer complete"` |
+| **RETURN** | Return values | `RETURN: "{ success: true }"` |
+| **ERROR** | Return errors | `ERROR: "Insufficient funds"` |
+| **BRANCH** | Conditional logic | `BRANCH: "amount > 1000"` |
+| **LOOP** | Iteration | `LOOP: "items"` |
+
+#### Built-In Functions
+
+Available in logic expressions:
+
+| Function | Description |
+|----------|-------------|
+| `generate_id()` | Create unique identifier |
+| `timestamp()` | Current ISO timestamp |
+| `random(min, max)` | Random number in range |
+| `format_currency(amount)` | Format as currency |
+| `validate_email(str)` | Email validation |
+
+#### Loop Safeguards
+
+Automatic protection against infinite loops:
+- Maximum iteration limits
+- Timeout detection
+- Circular reference prevention
+
+#### Access Control Modes
+
+| Mode | Description | Use Case |
+|------|-------------|----------|
+| **SHARED** | All agents can access | Chat systems, shared resources |
+| **ROLE_RESTRICTED** | Only specific roles | Admin tools, backend systems |
+| **PER_AGENT** | Each agent gets isolated instance | Personal devices, individual accounts |
+
+#### State Isolation
+
+| Type | Description |
+|------|-------------|
+| **Shared State** | Single state for all agents (e.g., customer database) |
+| **Per-Agent State** | Isolated state per agent (e.g., personal device) |
+
+#### Tool Type Annotations
+
+| Type | Description | Implication |
+|------|-------------|-------------|
+| **READ** | Query-only operations | Safe to retry, cacheable |
+| **WRITE** | State-modifying operations | Requires careful handling |
+
+---
 
 #### App Studio UI
 
-No-code app builder with comprehensive 4-step wizard for creating sophisticated agent-interactive apps:
+A comprehensive 4-step wizard for creating apps:
 
 ##### Step 1: Template Selection
 
-Choose from pre-built templates or start from scratch:
+![Template Selection](images/appstudio-template.png?v=2)
 
-![Template Selection](images/appstudio-template.png)
-
-*Template gallery offering Payment App (4 actions), Shopping App (5 actions), Email App (4 actions), Calendar App (4 actions), Messaging App (3 actions), or Blank App for custom creation*
+*6 starter templates: Payment App (4 actions), Shopping App (5 actions), Email App (4 actions), Calendar App (4 actions), Messaging App (3 actions), Blank App*
 
 ##### Step 2: App Details & Access Control
 
-Configure app identity and sophisticated access control:
+![App Info](images/appstudio-info.png?v=2)
 
-![App Info](images/appstudio-info.png)
+*Configure name, ID, description, category, and icon*
 
-*App configuration with name, ID (auto-generated), description, category selection, and custom icon picker*
+![Access Control](images/appstudio-access-control.png?v=2)
 
-**Access Control Configuration:**
-
-![Access Control](images/appstudio-access-control.png)
-
-*Fine-grained access control with three access modes and two state management options:*
-
-| Access Type | Description | Best For |
-|-------------|-------------|----------|
-| **Shared (Default)** | All agents can access | Chat systems, shared resources |
-| **Role-Restricted** | Only specific roles can access | Backend systems, admin tools |
-| **Per-Agent Instance** | Each agent gets isolated copy | Personal devices, individual accounts |
-
-| State Type | Description |
-|------------|-------------|
-| **Shared State** | Single state shared by all agents (e.g., customer DB) |
-| **Per-Agent State** | Each agent has isolated state (e.g., personal device) |
+*Select access type (Shared/Role-Restricted/Per-Agent) and state isolation*
 
 ##### Step 3: Actions Definition
 
-Define what agents can do with this app:
+![Actions List](images/appstudio-actions-list.png?v=2)
 
-![Actions List](images/appstudio-actions-list.png)
+*Overview showing operation type (WRITE/READ), logic indicators, and parameter counts*
 
-*Actions overview showing operation type (WRITE/READ), logic indicators, descriptions, and parameter counts*
+![Action Details](images/appstudio-action-details.png?v=2)
 
-**Expanded Action View:**
-
-![Action Details](images/appstudio-action-details.png)
-
-*Detailed action configuration showing:*
-- **Parameters**: Typed parameters with required/optional markers (`to` string*, `amount` number*, `note` string)
-- **Logic Flow**: Visual pipeline showing steps (`validate → validate → update → update → notify → return`)
+*Detailed view showing parameters and logic flow*
 
 ##### Step 4: Test Sandbox
 
-**Test Sandbox Features:**
-- Execute actions against simulated state
-- State snapshots before/after
-- Debug mode with step-through
-- Real-time state monitoring
+![Test Sandbox](images/agentworld-appstudio-sandbox.png?v=2)
 
-![Test Sandbox](images/agentworld-appstudio-sandbox.png)
+*Execute actions, view state snapshots, and debug in isolation*
 
-*Interactive test sandbox with agent selection, action execution panel, and live state visualization*
+#### App Library Features
+
+| Feature | Description |
+|---------|-------------|
+| **Grid/List Toggle** | Switch views (preference persisted) |
+| **Search** | Find apps by name or description |
+| **Category Filtering** | Filter by app category |
+| **Duplicate** | One-click app duplication |
+| **Export** | Download app definition as JSON |
+| **Delete** | Remove apps with confirmation |
 
 ---
 
-### 3.3 Evaluation Framework
+### 3.7 Evaluation Framework
 
-#### τ-bench Metrics (ADR-020)
+#### pass^k Metric
 
 Research-grade reliability measurement based on Sierra Research's τ-bench:
 
-**pass^k Metric:**
 ```
 pass^k = P(at least one success in k attempts)
        = 1 - (1 - p)^k
@@ -369,50 +502,35 @@ pass^k = P(at least one success in k attempts)
 Where p = base success probability
 ```
 
-This metric captures:
-- **Consistency**: How often does the agent succeed?
-- **Reliability at scale**: What's the probability of at least one failure in N deployments?
+**Why pass^k matters:**
 
-**Interpretation:**
 | pass^1 | pass^8 | Assessment |
 |--------|--------|------------|
-| 90% | 57% | High variability, unreliable |
-| 90% | 99% | Consistent, production-ready |
+| 90% | 57% | High variability—unreliable at scale |
+| 90% | 99% | Consistent—production-ready |
 
-**Task Evaluation Pipeline:**
-1. Define expected end state
-2. Run agent against task k times
-3. Compare actual vs expected state
-4. Compute pass^k with confidence intervals
+A 90% success rate sounds good, but if you deploy 8 instances, you have a 57% chance of at least one failure. pass^k reveals this hidden reliability issue.
 
-*Note: The evaluation panel is accessible from the simulation detail page, showing evaluator options (Persona Adherence, Coherence, Relevance, Consistency, Length Check, Keyword Filter) with run and filter controls.*
+#### Goal State Verification
 
-#### State Verification
+Semantic matching for flexible state comparison:
+- Exact match for critical fields
+- Fuzzy match for text content
+- Partial match scoring
+- Mismatch reporting
 
-Goal state comparison with semantic matching:
+#### Fault Classification
 
-```python
-expected_state = {
-    "user.tickets": [{"status": "resolved"}],
-    "user.refund_issued": True
-}
-
-actual_state = get_app_state(simulation_id)
-
-result = verify_state(actual_state, expected_state)
-# Returns: match_score, mismatches, partial_matches
-```
-
-#### Fault Classification (ADR-020)
-
-Systematic error diagnosis with 3 assignments × 10 fault types:
+Systematic error diagnosis with **3 assignments × 18+ fault types**:
 
 **Fault Assignments:**
-- **Agent Fault**: Agent made incorrect decision
-- **Environment Fault**: App/system behaved unexpectedly
-- **Task Fault**: Task specification was ambiguous
+| Assignment | Meaning |
+|------------|---------|
+| **Agent Fault** | Agent made incorrect decision |
+| **Environment Fault** | App/system behaved unexpectedly |
+| **Task Fault** | Task specification was ambiguous |
 
-**Fault Types:**
+**Fault Types (Sample):**
 1. Wrong action selected
 2. Missing required action
 3. Incorrect parameter value
@@ -423,6 +541,14 @@ Systematic error diagnosis with 3 assignments × 10 fault types:
 8. Context confusion
 9. Timeout exceeded
 10. Unhandled exception
+11. Memory retrieval failure
+12. Tool call format error
+13. Permission denied
+14. Rate limit exceeded
+15. Hallucinated action
+16. Incomplete response
+17. Circular dependency
+18. Resource exhaustion
 
 #### Policy Engine
 
@@ -439,298 +565,311 @@ policies:
     action: "redact_and_log"
 ```
 
-#### App Quality Scoring (ADR-021)
+#### App Quality Scoring
 
-6-dimension quality assessment for app definitions:
+6-dimension assessment for app definitions:
 
 | Dimension | Weight | Measures |
 |-----------|--------|----------|
 | **Completeness** | 20% | All required fields, actions, states defined |
-| **Consistency** | 20% | Schema coherence, naming conventions |
-| **Testability** | 15% | Edge cases covered, error paths defined |
-| **Complexity** | 15% | Appropriate complexity for use case |
 | **Documentation** | 15% | Descriptions, examples, usage notes |
-| **Reusability** | 15% | Modular design, parameterization |
+| **Validation** | 20% | Input validation, error handling |
+| **Error Handling** | 15% | Graceful failure, informative messages |
+| **State Safety** | 15% | Atomic updates, consistency guarantees |
+| **Consistency** | 15% | Naming conventions, schema coherence |
 
-*Note: Quality scoring provides 6-dimension assessment accessible via the app evaluation API.*
+#### A/B Testing Framework
+
+Built-in statistical comparison:
+
+| Feature | Description |
+|---------|-------------|
+| **Variant Definition** | Define A/B test configurations |
+| **Random Assignment** | Automatic agent assignment to variants |
+| **Metric Collection** | Track success rates, completion times |
+| **Statistical Analysis** | Significance testing, confidence intervals |
+| **Cohen's d** | Effect size calculation for practical significance |
+
+#### LLM-Based Validators
+
+| Validator | What It Checks |
+|-----------|----------------|
+| **Persona Adherence** | Does agent stay in character? |
+| **Coherence** | Are responses logically consistent? |
+| **Consistency** | Are facts maintained across turns? |
+| **Relevance** | Does response address the query? |
+
+#### Budget Management
+
+**Sampling Rate Control**: Run expensive validators on a subset of interactions to manage costs while maintaining statistical validity.
 
 ---
 
-### 3.4 API & Integration Layer
+### 3.8 Reasoning Visibility & Auditability
 
-#### REST API (ADR-012)
+#### 5 Visibility Levels
 
-30+ endpoints with pagination, filtering, and sorting:
+| Level | What's Captured | Use Case |
+|-------|-----------------|----------|
+| **NONE** | Nothing | Production, privacy-sensitive |
+| **SUMMARY** | High-level decisions only | Standard monitoring |
+| **DETAILED** | Decisions + key reasoning | Debugging |
+| **FULL** | Complete reasoning traces | Development |
+| **DEBUG** | Everything including internals | Deep debugging |
 
-**Core Resources:**
-```
-GET    /api/simulations           # List simulations
-POST   /api/simulations           # Create simulation
-GET    /api/simulations/{id}      # Get simulation details
-PUT    /api/simulations/{id}      # Update simulation
-DELETE /api/simulations/{id}      # Delete simulation
-POST   /api/simulations/{id}/run  # Start simulation
-POST   /api/simulations/{id}/pause # Pause simulation
+#### Reasoning Trace Contents
 
-GET    /api/agents                # List agents
-GET    /api/agents/{id}           # Get agent details
-GET    /api/agents/{id}/memories  # Get agent memories
+| Component | Description |
+|-----------|-------------|
+| **Prompts** | Full prompts sent to LLM |
+| **Completions** | Raw LLM responses |
+| **Tool Calls** | Actions attempted and results |
+| **Memory Retrievals** | Which memories influenced decision |
+| **Timestamps** | Precise timing for each step |
 
-GET    /api/apps                  # List apps
-POST   /api/apps                  # Create app
-GET    /api/apps/{id}             # Get app details
-POST   /api/apps/{id}/execute     # Execute app action
+#### Privacy Redaction
 
-GET    /api/tasks                 # List evaluation tasks
-POST   /api/tasks/{id}/evaluate   # Run task evaluation
-GET    /api/tasks/{id}/results    # Get evaluation results
-```
+Automatic redaction of sensitive data:
 
-**Features:**
-- OpenAPI 3.0 specification
-- JWT authentication
-- Rate limiting
-- Request validation
-- Comprehensive error responses
+| Pattern | Redaction |
+|---------|-----------|
+| API Keys | `sk-...` → `[REDACTED_API_KEY]` |
+| Email Addresses | `user@domain.com` → `[REDACTED_EMAIL]` |
+| Phone Numbers | `555-123-4567` → `[REDACTED_PHONE]` |
+| Credit Cards | `4111-1111...` → `[REDACTED_CC]` |
+| SSN | `123-45-6789` → `[REDACTED_SSN]` |
 
-#### WebSocket (ADR-012)
+#### Audit Trail
 
-Real-time event streaming:
+Complete action history with:
+- Agent ID and name
+- Action type and parameters
+- Timestamp (ISO 8601)
+- Result status
+- State changes
 
-```javascript
-const ws = new WebSocket('ws://localhost:8000/ws/simulations/{id}');
+---
 
-ws.onmessage = (event) => {
-  const data = JSON.parse(event.data);
-  switch(data.type) {
-    case 'message_sent':
-      // New message in conversation
-      break;
-    case 'state_changed':
-      // App state updated
-      break;
-    case 'agent_action':
-      // Agent took action
-      break;
-    case 'simulation_complete':
-      // Simulation finished
-      break;
-  }
-};
-```
+### 3.9 Data Export & Training Pipeline
 
-#### Export Pipeline (ADR-013)
-
-6 fine-tuning formats for downstream ML:
+#### 6 Export Formats
 
 | Format | Description | Use Case |
 |--------|-------------|----------|
-| **OpenAI Fine-tuning** | JSONL with messages array | GPT model fine-tuning |
-| **Anthropic Format** | Human/Assistant turns | Claude fine-tuning |
-| **DPO Pairs** | Chosen/rejected pairs | Direct preference optimization |
-| **SFT Dataset** | Instruction-response pairs | Supervised fine-tuning |
-| **ShareGPT** | Multi-turn conversations | Community format |
-| **Raw JSON** | Complete simulation data | Custom processing |
+| **JSONL** | Raw JSON lines | Custom processing |
+| **OpenAI** | Messages array format | GPT fine-tuning |
+| **Anthropic** | Human/Assistant turns | Claude fine-tuning |
+| **ShareGPT** | Multi-turn conversations | Community sharing |
+| **Alpaca** | Instruction-response pairs | SFT training |
+| **DPO** | Chosen/rejected pairs | Preference optimization |
 
-```python
-from agentworld.export import ExportPipeline
+#### Redaction Profiles
 
-pipeline = ExportPipeline(simulation_id="sim_123")
-pipeline.export(
-    format="openai",
-    output_path="training_data.jsonl",
-    filters={"min_quality_score": 0.8}
-)
-```
+| Profile | What's Redacted |
+|---------|-----------------|
+| **None** | Nothing (internal use only) |
+| **Basic** | API keys, credentials |
+| **Strict** | All PII patterns detected |
 
-#### Agent Injection (ADR-016)
+#### DPO Pair Generation
 
-Test external agents in AgentWorld environments:
+Automatic generation of preference pairs:
+- **Score Threshold**: Minimum score difference for pairs
+- **Quality Filtering**: Min score for "chosen" responses
+- **Diversity Sampling**: Avoid redundant pairs
 
-```python
-from agentworld.injection import inject_agent
+#### Export Manifest
 
-# Inject your custom agent into a simulation
-inject_agent(
-    simulation_id="sim_123",
-    agent_class=MyCustomAgent,
-    replace_agent="customer_service_bot",
-    config={"temperature": 0.7}
-)
-```
+Each export includes a manifest with:
+
+| Field | Description |
+|-------|-------------|
+| **Version** | Export format version |
+| **Timestamp** | Export creation time |
+| **Filters Applied** | What filters were used |
+| **Record Count** | Number of records |
+| **Integrity Hash** | SHA-256 for verification |
+
+#### Min Score Filtering
+
+Export only high-quality interactions by setting minimum score thresholds.
+
+#### Agent Anonymization
+
+Replace agent identifiers with generic labels for privacy-preserving exports.
 
 ---
 
-### 3.5 Web Dashboard
+### 3.10 Web Dashboard
 
-#### Main Dashboard
+#### Dashboard Overview
 
-![Dashboard Overview](images/agentworld-dashboard-overview.png)
+![Dashboard Overview](images/agentworld-dashboard-overview.png?v=2)
 
-*Main dashboard showing total simulations, agents, messages, cost metrics, and recent simulation list*
+*Main dashboard showing total simulations, agents, messages, cost metrics, and recent simulation list with quick actions*
 
-**Features:**
-- Recent simulations with status
+**Dashboard Components:**
+- Stats cards with key metrics
+- Recent simulations list
 - Quick action buttons
-- System health metrics
-- Notification center
+- System status indicators
 
-#### Simulation Detail Page
+#### Simulations List
 
-![Simulation Detail](images/agentworld-simulation-detail.png?v=2)
+Features:
+- **Search**: Find simulations by name
+- **Status Filters**: Filter by Running, Completed, Paused, Failed
+- **Progress Bars**: Visual completion indicators
+- **Bulk Actions**: Multi-select operations
 
-*Simulation detail view with controls, agent topology, conversation stream, export options, and evaluation panel*
+#### Simulation Detail
+
+![Simulation Detail](images/agentworld-simulation-detail.png?v=3)
+
+*Complete simulation view with all components*
 
 **Components:**
-- Force-directed topology graph (D3.js)
-- Real-time conversation stream
-- Agent inspector panel
-- State timeline
-- Metrics sidebar
 
-#### Live Visualization
-
-- D3.js force-directed graphs
-- Real-time message flow animation
-- Agent state indicators
-- Interactive zoom and pan
+| Component | Features |
+|-----------|----------|
+| **Controls Panel** | Play, Pause, Step, Reset buttons |
+| **Topology Graph** | Force-directed D3.js visualization |
+| **Conversation Stream** | Virtualized message list |
+| **Agent Inspector** | Detailed agent view |
+| **Apps Panel** | App instances and action logs |
+| **Stimulus Injector** | Manual message injection |
 
 #### Conversation Stream
 
-- Virtualized list for performance
-- Message threading
-- Agent avatars with personality indicators
-- Action highlighting
-- Export/copy functionality
+| Feature | Description |
+|---------|-------------|
+| **Virtualization** | react-window for 1000+ messages |
+| **Agent Filter Pills** | Scrollable agent filtering |
+| **Search** | Find messages by content |
+| **Step Dividers** | Visual separation between steps |
+| **Auto-Scroll** | Follow latest messages |
+| **Export** | Copy or download conversations |
+
+#### Agent Inspector
+
+Accessible by clicking any agent in topology or conversation:
+
+| Tab | Contents |
+|-----|----------|
+| **Overview** | Persona, traits radar chart, stats |
+| **Messages** | Agent's message history |
+| **Memories** | Observations and reflections list |
+| **Stats** | Token usage, cost, action counts |
+
+#### Apps Panel
+
+| Feature | Description |
+|---------|-------------|
+| **Expandable Instances** | Click to see app details |
+| **Action Log** | Chronological action history |
+| **State Viewer** | Current app state |
+| **Cost Tracking** | Per-app token and cost metrics |
+
+#### Real-Time Updates
+
+WebSocket events for live updates:
+- Message sent/received
+- State changes
+- Agent actions
+- Simulation status changes
+- Error notifications
 
 ---
 
-## 4. Value Proposition for Enterprise
+## 4. Value Proposition
 
 ### 4.1 For Data Science Teams
 
-| Capability | Value |
-|------------|-------|
-| **pass^k metrics** | Research-grade reliability measurement—know exactly how often your agent will fail at scale |
-| **Fault classification** | Systematic error diagnosis—stop guessing why agents fail |
-| **Multi-provider LLM** | Cost optimization—use cheaper models for development, premium for production |
-| **Export pipeline** | Direct to fine-tuning formats—no manual data preparation |
-| **Deterministic replay** | Reproducible experiments—same seed, same results |
-| **Memory inspection** | Debug agent reasoning—see exactly what context influenced decisions |
+| Capability | Business Value | Unique to AgentWorld? |
+|------------|----------------|----------------------|
+| **pass^k metrics** | Know exact failure rate at scale—no surprises in production | ✅ Only framework with this |
+| **Trait vectors** | Systematic personality experiments with continuous (not discrete) traits | ✅ Continuous 0-1 range |
+| **A/B testing** | Built-in statistical comparison with Cohen's d effect size | ✅ No external tools needed |
+| **Cost tracking** | Per-agent budget management down to individual actions | ✅ Fine-grained |
+| **Deterministic replay** | Perfect reproducibility with seed + model pinning | ✅ Full control |
+| **Memory inspection** | Debug agent reasoning—see exactly what influenced decisions | Shared with few |
+| **Fault classification** | 3×18+ systematic error taxonomy | ✅ Most comprehensive |
+| **Export pipeline** | 6 formats ready for fine-tuning—no manual prep | ✅ Most formats |
 
 ### 4.2 For Product Teams
 
-| Capability | Value |
-|------------|-------|
-| **Focus group simulation** | Test concepts in minutes, not weeks—rapid iteration on agent behavior |
-| **Diverse personas** | Automatic diverse feedback—Big Five personalities generate varied responses |
-| **No-code App Studio** | Non-developers can create test environments—democratize agent testing |
-| **YAML scenarios** | Reproducible test suites—version control your test cases |
-| **Visual topology builder** | Design communication flows—no coding required |
-| **State snapshots** | Point-in-time debugging—understand exactly what happened |
+| Capability | Business Value | Impact |
+|------------|----------------|--------|
+| **Focus group simulation** | Test concepts without recruiting participants | Weeks → Minutes |
+| **No-code App Studio** | Non-developers create test environments | Days → Hours |
+| **Template library** | Start from proven scenarios | Skip boilerplate |
+| **Visual topology** | Design communication flows visually | No coding |
+| **State snapshots** | Point-in-time debugging | Hours of logs → Instant |
+| **Persona presets** | 5 ready-to-use personality types | Immediate start |
+| **Quick stepping** | Rapid iteration with +5/+10/+25 controls | Faster testing |
 
-### 4.3 PayPal-Specific Use Cases
+### 4.3 For Enterprise & Compliance
+
+| Capability | Compliance Value |
+|------------|-----------------|
+| **Reasoning visibility** | 5-level audit of agent decisions |
+| **Privacy redaction** | GDPR-friendly exports with PII detection |
+| **Policy engine** | Enforce business rules automatically |
+| **Audit trails** | Complete action history with timestamps |
+| **Role-based access** | Control who sees what data |
+| **Export manifests** | Integrity hashes for verification |
+| **Agent anonymization** | Privacy-preserving data sharing |
+
+### 4.4 PayPal-Specific Use Cases
 
 #### Payment App Testing
 
 Simulate complex payment flows with multi-agent interactions:
 
-```yaml
-scenario: "disputed_payment"
-agents:
-  - role: buyer
-    persona: "cautious_consumer"
-  - role: seller
-    persona: "responsive_merchant"
-  - role: mediator
-    persona: "neutral_arbiter"
+- Buyer initiates transfer
+- Seller receives payment
+- Disputes filed and resolved
+- Mediators make decisions
 
-apps:
-  - PaymentApp
-  - DisputeApp
-
-flow:
-  1. buyer initiates transfer to seller
-  2. buyer files dispute after 3 days
-  3. mediator requests evidence from both
-  4. mediator makes resolution decision
-
-evaluation:
-  - "dispute.status == 'resolved'"
-  - "buyer.satisfaction >= 0.7 OR seller.satisfaction >= 0.7"
-```
+**Evaluate:**
+- Policy compliance at each step
+- Resolution quality
+- Customer satisfaction metrics
 
 #### Fraud Detection Training
 
-Generate synthetic data for ML model training:
+Generate synthetic data for ML models:
+- Normal transaction patterns
+- Suspicious behavior from "fraudster" personas
+- Edge cases automatically explored
+- Labeled ground truth output
 
-- **Normal transactions**: Various personas making legitimate payments
-- **Suspicious patterns**: Agents with "fraudster" traits attempting exploits
-- **Edge cases**: Boundary conditions automatically explored
-- **Labeled output**: Ground truth for supervised learning
-
-#### Agent Orchestration
-
-Multi-agent payment workflows:
+#### Multi-Agent Payment Orchestration
 
 ```
-Buyer Agent → Payment Gateway Agent → Seller Agent
-      ↓                 ↓                    ↓
-Wallet App        Compliance App        Inventory App
+Buyer Agent → Payment Gateway → Seller Agent
+      ↓              ↓               ↓
+  Wallet App    Compliance App   Inventory App
 ```
 
-Test complex interactions:
+Test:
 - Concurrent transactions
 - Rollback scenarios
 - Cross-app state consistency
 
-#### Compliance Verification
+### 4.5 Airlines/Emirates Use Cases
 
-Policy rule enforcement and audit trails:
-
-- **Transaction limits**: Enforced per-user, per-day, per-transaction
-- **KYC requirements**: Large transfers require verification
-- **Geographic restrictions**: Block transactions to sanctioned regions
-- **Audit logging**: Complete trail for regulatory review
-
-#### Customer Service Simulation
-
-τ-bench style agent-user interaction testing:
-
-- Customer personas with varying patience levels
-- Complex query resolution paths
-- Escalation scenarios
-- Satisfaction measurement
-
-### 4.4 Airlines/Emirates Domain Use Cases
-
-The airline domain is particularly challenging for AI agents. τ-bench demonstrated that airline tasks have lower success rates than retail (GPT-4o pass^1 = 35.2% vs 50% retail), making it ideal for stress-testing agent capabilities.
+The airline domain is particularly challenging—τ-bench showed GPT-4o achieves only 35.2% pass^1 on airline tasks vs 50% retail. If your agent handles airlines, it handles anything.
 
 #### Booking Management
 
-```yaml
-scenario: "flight_change_with_constraints"
-agents:
-  - role: passenger
-    persona: "frequent_flyer"
-    traits:
-      patience: 0.3  # Low patience, high expectations
-
-apps:
-  - AirlineApp:
-      flights: [...]
-      loyalty_tiers: ["silver", "gold", "platinum"]
-
-task:
-  - Change flight from JFK→DXB to earlier departure
-  - Maintain seat preference (aisle, exit row)
-  - Apply platinum member benefits
-  - Handle no availability gracefully
-```
+Test flight changes with constraints:
+- Maintain seat preferences
+- Apply loyalty benefits
+- Handle no availability gracefully
+- Comply with fare rules
 
 #### Customer Service Agent Testing
-
-Test agent handling of passenger inquiries:
 
 | Scenario | Complexity | Key Metrics |
 |----------|------------|-------------|
@@ -740,60 +879,13 @@ Test agent handling of passenger inquiries:
 | Delay compensation | High | Legal accuracy |
 | Medical emergency | High | Escalation timing |
 
-#### Loyalty Program Simulation
-
-Multi-tier customer interactions:
-
-```
-Standard → Silver → Gold → Platinum
-   ↓          ↓        ↓         ↓
-Basic     Priority  Lounge   Concierge
-Support    Queue    Access    Service
-```
-
-Test differential treatment:
-- Queue priority simulation
-- Benefit application accuracy
-- Tier upgrade/downgrade communication
-
 #### Disruption Management
 
-Rebooking scenarios with multiple passengers:
-
-```yaml
-scenario: "mass_cancellation"
-agents:
-  - role: passengers (count: 50)
-    persona_distribution:
-      anxious_traveler: 0.3
-      business_priority: 0.25
-      family_group: 0.25
-      flexible_tourist: 0.2
-
-disruption:
-  type: "weather_cancellation"
-  affected_flights: ["EK203", "EK205"]
-
-evaluation:
-  - rebooking_success_rate >= 0.95
-  - average_delay < "24h"
-  - compensation_compliance == 1.0
-  - customer_communication_within "2h"
-```
-
-#### Dual-Control Scenarios
-
-Agent-passenger coordination (τ²-bench style):
-
-| Scenario | Agent Actions | Passenger Actions |
-|----------|--------------|-------------------|
-| Check-in | Verify documents | Provide passport |
-| Seat selection | Show options | Make choice |
-| Upgrade offer | Present deal | Accept/decline |
-| Baggage claim | Initiate search | Describe bag |
-
-**Why Airlines?**
-> τ-bench demonstrated that airline domain is one of the most challenging (GPT-4o pass^1 = 35.2% vs 50% retail), making it ideal for stress-testing agent capabilities. If your agent can handle airline scenarios reliably, it can handle most enterprise domains.
+Mass cancellation scenarios:
+- 50+ affected passengers
+- Mixed persona distributions
+- Time-sensitive rebooking
+- Compensation compliance
 
 ---
 
@@ -828,10 +920,6 @@ TinyTroupe                  ✅        ❌        ❌       ❌        ❌      
 | **Export Formats** | 6 formats | None | None | None |
 | **Web UI** | Full dashboard | CLI only | CLI only | None |
 | **Real-time Viz** | WebSocket + D3.js | None | None | None |
-
-### Key Differentiator
-
-> "AgentWorld is the only platform combining true multi-agent support (N>2), no-code app creation, AND research-grade evaluation metrics in a single integrated system."
 
 ### When to Use Each Platform
 
@@ -871,9 +959,9 @@ TinyTroupe                  ✅        ❌        ❌       ❌        ❌      
 │  │  Simulation      │  │     Agent        │  │    App           │        │
 │  │  Runner          │  │    System        │  │   Framework      │        │
 │  │  ─────────────   │  │  ─────────────   │  │  ─────────────   │        │
-│  │  • Scheduling    │  │  • Personas      │  │  • Dynamic Apps  │        │
-│  │  • Checkpoints   │  │  • Memory        │  │  • Logic Engine  │        │
-│  │  • Control       │  │  • LLM Calls     │  │  • State Mgmt    │        │
+│  │  • 5 Orderings   │  │  • Big Five      │  │  • Dynamic Apps  │        │
+│  │  • Checkpoints   │  │  • Dual Memory   │  │  • Logic Engine  │        │
+│  │  • Seeded Exec   │  │  • 5 Presets     │  │  • 3 Access Modes│        │
 │  └──────────────────┘  └──────────────────┘  └──────────────────┘        │
 │                                                                            │
 │  ┌──────────────────┐  ┌──────────────────┐  ┌──────────────────┐        │
@@ -881,8 +969,8 @@ TinyTroupe                  ✅        ❌        ❌       ❌        ❌      
 │  │   Manager        │  │   Engine         │  │   Pipeline       │        │
 │  │  ─────────────   │  │  ─────────────   │  │  ─────────────   │        │
 │  │  • 5 Types       │  │  • pass^k        │  │  • 6 Formats     │        │
-│  │  • NetworkX      │  │  • Faults        │  │  • Filters       │        │
-│  │  • Metrics       │  │  • Quality       │  │  • Transforms    │        │
+│  │  • Centrality    │  │  • 3×18+ Faults  │  │  • 3 Redaction   │        │
+│  │  • Routing Modes │  │  • A/B Testing   │  │  • DPO Pairs     │        │
 │  └──────────────────┘  └──────────────────┘  └──────────────────┘        │
 └───────────────────────────────┬───────────────────────────────────────────┘
                                 │
@@ -909,12 +997,14 @@ TinyTroupe                  ✅        ❌        ❌       ❌        ❌      
 |-------|------------|---------|
 | **Frontend** | React + TypeScript | Web dashboard |
 | **Visualization** | D3.js | Force-directed graphs, charts |
+| **List Virtualization** | react-window | Performance for large lists |
 | **API** | FastAPI | REST + WebSocket |
 | **Core** | Python 3.11+ | Simulation engine |
 | **Database** | SQLite + SQLAlchemy | Persistence |
 | **LLM** | LiteLLM | Multi-provider abstraction |
 | **Embeddings** | Sentence-Transformers | Memory retrieval |
 | **Graphs** | NetworkX | Topology management |
+| **Token Counting** | TikToken | Accurate usage tracking |
 
 ---
 
@@ -931,14 +1021,14 @@ Current Phase: Phase 10h - Dual-Control Extension
 
 | ADR | Name | Status | Notes |
 |-----|------|--------|-------|
-| ADR-003 | Multi-Provider LLM Architecture | ✅ Complete | LiteLLM integration |
-| ADR-004 | Trait Vector Persona System | ✅ Complete | Big Five + custom |
-| ADR-005 | Network Topology Architecture | ✅ Complete | 5 topology types |
+| ADR-003 | Multi-Provider LLM Architecture | ✅ Complete | LiteLLM + 100 models |
+| ADR-004 | Trait Vector Persona System | ✅ Complete | Big Five + 5 presets |
+| ADR-005 | Network Topology Architecture | ✅ Complete | 5 types + centrality |
 | ADR-006 | Dual Memory Architecture | ✅ Complete | Episodic + semantic |
 | ADR-008 | Persistence & State Management | ✅ Complete | SQLAlchemy |
 | ADR-009 | Use Case Scenarios | ✅ Complete | Focus groups |
 | ADR-010 | Evaluation Framework | ✅ Complete | Metrics engine |
-| ADR-011 | Simulation Runtime | ✅ Complete | Checkpoints |
+| ADR-011 | Simulation Runtime | ✅ Complete | 5 orderings + checkpoints |
 | ADR-012 | REST API | ✅ Complete | FastAPI |
 | ADR-013 | Export Pipeline | ✅ Complete | 6 formats |
 | ADR-014 | Security | ✅ Complete | JWT auth |
@@ -946,8 +1036,8 @@ Current Phase: Phase 10h - Dual-Control Extension
 | ADR-016 | Agent Injection | ✅ Complete | External agents |
 | ADR-017 | Simulated Apps | ✅ Complete | Payment apps |
 | ADR-018 | Dynamic App Engine | 🟡 In Progress | JSON apps |
-| ADR-019 | Logic Language | 🟡 In Progress | Declarative logic |
-| ADR-020 | τ-bench Evaluation | 🟡 ~90% | pass^k metrics |
+| ADR-019 | Logic Language | 🟡 In Progress | 7 directives |
+| ADR-020 | τ-bench Evaluation | 🟡 ~90% | pass^k + faults |
 | ADR-020.1 | Dual-Control Extension | 🟡 ~85% | τ²-bench support |
 | ADR-021 | App Quality Scoring | ✅ Complete | 6-dimension |
 | UI-ADR-001 | Web Foundation | ✅ Complete | React setup |
@@ -1008,62 +1098,7 @@ Current Phase: Phase 10h - Dual-Control Extension
 | UI-ADR-006-008 | Advanced Web Workflows | UI |
 | UI-ADR-009-013 | App Studio UI | UI |
 
-### Appendix B: API Endpoint Reference
-
-#### Simulations
-```
-GET    /api/simulations
-POST   /api/simulations
-GET    /api/simulations/{id}
-PUT    /api/simulations/{id}
-DELETE /api/simulations/{id}
-POST   /api/simulations/{id}/run
-POST   /api/simulations/{id}/pause
-POST   /api/simulations/{id}/resume
-POST   /api/simulations/{id}/cancel
-GET    /api/simulations/{id}/messages
-GET    /api/simulations/{id}/metrics
-```
-
-#### Agents
-```
-GET    /api/agents
-GET    /api/agents/{id}
-GET    /api/agents/{id}/memories
-PUT    /api/agents/{id}/traits
-```
-
-#### Apps
-```
-GET    /api/apps
-POST   /api/apps
-GET    /api/apps/{id}
-PUT    /api/apps/{id}
-DELETE /api/apps/{id}
-POST   /api/apps/{id}/execute
-GET    /api/apps/{id}/state
-POST   /api/apps/{id}/validate
-```
-
-#### Evaluation
-```
-GET    /api/tasks
-POST   /api/tasks
-GET    /api/tasks/{id}
-POST   /api/tasks/{id}/evaluate
-GET    /api/tasks/{id}/results
-GET    /api/evaluations
-GET    /api/evaluations/{id}
-```
-
-#### Export
-```
-POST   /api/export
-GET    /api/export/{id}/status
-GET    /api/export/{id}/download
-```
-
-### Appendix C: References & Citations
+### Appendix B: References & Citations
 
 #### Academic Papers
 
