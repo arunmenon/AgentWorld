@@ -1112,6 +1112,8 @@ class AppDefinitionModel(Base):
 
     Stores JSON app definitions that can be loaded as DynamicApps
     per ADR-018.
+
+    Extended per ADR-020.1 with access control columns for efficient querying.
     """
 
     __tablename__ = "app_definitions"
@@ -1129,6 +1131,11 @@ class AppDefinitionModel(Base):
     created_by = Column(String(255), nullable=True)
     created_at = Column(DateTime, default=_utc_now)
     updated_at = Column(DateTime, default=_utc_now, onupdate=_utc_now)
+
+    # ADR-020.1: Access control columns (for efficient querying)
+    access_type = Column(String(20), default="shared", nullable=False, index=True)
+    allowed_roles_json = Column(Text, nullable=True)  # JSON array
+    state_type = Column(String(20), default="shared", nullable=False)
 
     # Relationships
     versions = relationship(
@@ -1153,6 +1160,10 @@ class AppDefinitionModel(Base):
             "created_by": self.created_by,
             "created_at": self.created_at.isoformat() if self.created_at else None,
             "updated_at": self.updated_at.isoformat() if self.updated_at else None,
+            # ADR-020.1 access control
+            "access_type": self.access_type or "shared",
+            "allowed_roles": json.loads(self.allowed_roles_json) if self.allowed_roles_json else None,
+            "state_type": self.state_type or "shared",
         }
 
     def to_summary_dict(self) -> dict[str, Any]:
@@ -1173,6 +1184,10 @@ class AppDefinitionModel(Base):
             "created_by": self.created_by,
             "created_at": self.created_at.isoformat() if self.created_at else None,
             "updated_at": self.updated_at.isoformat() if self.updated_at else None,
+            # ADR-020.1 access control
+            "access_type": self.access_type or "shared",
+            "allowed_roles": json.loads(self.allowed_roles_json) if self.allowed_roles_json else None,
+            "state_type": self.state_type or "shared",
         }
 
     @classmethod
@@ -1191,7 +1206,16 @@ class AppDefinitionModel(Base):
                 "state_schema": data.get("state_schema", []),
                 "initial_config": data.get("initial_config", {}),
                 "config_schema": data.get("config_schema", []),
+                # ADR-020.1 access control (include in definition JSON too)
+                "access_type": data.get("access_type", "shared"),
+                "allowed_roles": data.get("allowed_roles"),
+                "state_type": data.get("state_type", "shared"),
             }
+
+        # Extract access control from definition if not in top-level
+        access_type = data.get("access_type") or definition.get("access_type", "shared")
+        allowed_roles = data.get("allowed_roles") or definition.get("allowed_roles")
+        state_type = data.get("state_type") or definition.get("state_type", "shared")
 
         return cls(
             id=data["id"],
@@ -1205,6 +1229,10 @@ class AppDefinitionModel(Base):
             is_builtin=int(data.get("is_builtin", False)),
             is_active=int(data.get("is_active", True)),
             created_by=data.get("created_by"),
+            # ADR-020.1 access control columns
+            access_type=access_type,
+            allowed_roles_json=json.dumps(allowed_roles) if allowed_roles else None,
+            state_type=state_type,
         )
 
 
@@ -1652,4 +1680,263 @@ class PolicyRuleModel(Base):
             requirements_json=json.dumps(data.get("requirements", [])),
             severity=data.get("severity", "error"),
             is_active=int(data.get("is_active", True)),
+        )
+
+
+# =============================================================================
+# ADR-020.1: Dual-Control Extension Models
+# =============================================================================
+
+
+class DualControlTaskModel(Base):
+    """Database model for dual-control task definitions.
+
+    Stores task definitions requiring agent-user coordination
+    per ADR-020.1 (τ²-bench compatibility).
+    """
+
+    __tablename__ = "dual_control_tasks"
+
+    id = Column(String(36), primary_key=True)
+    task_id = Column(String(100), nullable=False, unique=True, index=True)
+    name = Column(String(200), nullable=False)
+    description = Column(Text, nullable=True)
+    domain = Column(String(50), nullable=False, index=True)
+    difficulty = Column(String(20), nullable=False)
+
+    # Simulation config
+    simulation_config_json = Column(Text, nullable=True)
+
+    # Agent configuration
+    agent_id = Column(String(100), nullable=False)
+    agent_role = Column(String(20), nullable=False, default="service_agent")
+    agent_instruction = Column(Text, nullable=False)
+    agent_apps_json = Column(Text, nullable=True)  # JSON array
+    agent_initial_state_json = Column(Text, nullable=True)
+    agent_goal_state_json = Column(Text, nullable=True)
+
+    # User configuration
+    user_id = Column(String(100), nullable=False)
+    user_role = Column(String(20), nullable=False, default="customer")
+    user_instruction = Column(Text, nullable=False)
+    user_apps_json = Column(Text, nullable=True)  # JSON array
+    user_initial_state_json = Column(Text, nullable=True)
+    user_goal_state_json = Column(Text, nullable=True)
+
+    # Coordination requirements
+    required_handoffs_json = Column(Text, nullable=True)  # JSON array
+    max_turns = Column(Integer, default=20)
+    expected_coordination_count = Column(Integer, default=0)
+
+    # Metadata
+    tags_json = Column(Text, nullable=True)  # JSON array
+    is_active = Column(Integer, default=1, nullable=False, index=True)
+    created_at = Column(DateTime, default=_utc_now)
+    updated_at = Column(DateTime, default=_utc_now, onupdate=_utc_now)
+
+    def to_dict(self) -> dict[str, Any]:
+        """Convert to dictionary."""
+        return {
+            "id": self.id,
+            "task_id": self.task_id,
+            "name": self.name,
+            "description": self.description,
+            "domain": self.domain,
+            "difficulty": self.difficulty,
+            "simulation_config": json.loads(self.simulation_config_json) if self.simulation_config_json else {},
+            "agent_id": self.agent_id,
+            "agent_role": self.agent_role,
+            "agent_instruction": self.agent_instruction,
+            "agent_apps": json.loads(self.agent_apps_json) if self.agent_apps_json else [],
+            "agent_initial_state": json.loads(self.agent_initial_state_json) if self.agent_initial_state_json else {},
+            "agent_goal_state": json.loads(self.agent_goal_state_json) if self.agent_goal_state_json else {},
+            "user_id": self.user_id,
+            "user_role": self.user_role,
+            "user_instruction": self.user_instruction,
+            "user_apps": json.loads(self.user_apps_json) if self.user_apps_json else [],
+            "user_initial_state": json.loads(self.user_initial_state_json) if self.user_initial_state_json else {},
+            "user_goal_state": json.loads(self.user_goal_state_json) if self.user_goal_state_json else {},
+            "required_handoffs": json.loads(self.required_handoffs_json) if self.required_handoffs_json else [],
+            "max_turns": self.max_turns,
+            "expected_coordination_count": self.expected_coordination_count,
+            "tags": json.loads(self.tags_json) if self.tags_json else [],
+            "is_active": bool(self.is_active),
+            "created_at": self.created_at.isoformat() if self.created_at else None,
+            "updated_at": self.updated_at.isoformat() if self.updated_at else None,
+        }
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> "DualControlTaskModel":
+        """Create from dictionary."""
+        return cls(
+            id=data["id"],
+            task_id=data["task_id"],
+            name=data["name"],
+            description=data.get("description"),
+            domain=data["domain"],
+            difficulty=data["difficulty"],
+            simulation_config_json=json.dumps(data.get("simulation_config", {})),
+            agent_id=data["agent_id"],
+            agent_role=data.get("agent_role", "service_agent"),
+            agent_instruction=data["agent_instruction"],
+            agent_apps_json=json.dumps(data.get("agent_apps", [])),
+            agent_initial_state_json=json.dumps(data.get("agent_initial_state", {})),
+            agent_goal_state_json=json.dumps(data.get("agent_goal_state", {})),
+            user_id=data["user_id"],
+            user_role=data.get("user_role", "customer"),
+            user_instruction=data["user_instruction"],
+            user_apps_json=json.dumps(data.get("user_apps", [])),
+            user_initial_state_json=json.dumps(data.get("user_initial_state", {})),
+            user_goal_state_json=json.dumps(data.get("user_goal_state", {})),
+            required_handoffs_json=json.dumps(data.get("required_handoffs", [])),
+            max_turns=data.get("max_turns", 20),
+            expected_coordination_count=data.get("expected_coordination_count", 0),
+            tags_json=json.dumps(data.get("tags", [])),
+            is_active=int(data.get("is_active", True)),
+        )
+
+
+class CoordinationEventModel(Base):
+    """Database model for coordination events.
+
+    Tracks coordination handoffs between agents and users
+    per ADR-020.1 (τ²-bench compatibility).
+    """
+
+    __tablename__ = "coordination_events"
+
+    id = Column(String(36), primary_key=True)
+    event_id = Column(String(36), nullable=False, unique=True, index=True)
+    trial_id = Column(String(36), nullable=False, index=True)
+    task_id = Column(String(100), nullable=False, index=True)
+
+    # Instructor
+    instructor_id = Column(String(100), nullable=False)
+    instructor_role = Column(String(20), nullable=False)
+    instruction_text = Column(Text, nullable=True)
+
+    # Actor
+    actor_id = Column(String(100), nullable=True)
+    actor_role = Column(String(20), nullable=True)
+    action_taken = Column(String(100), nullable=True)
+    action_params_json = Column(Text, nullable=True)
+
+    # Matching
+    matched_handoff_id = Column(String(100), nullable=True)
+    match_confidence = Column(Float, default=0.0)
+
+    # Result
+    handoff_successful = Column(Integer, default=0)  # Boolean as int
+    latency_turns = Column(Integer, default=0)
+
+    # Metadata
+    timestamp = Column(DateTime, default=_utc_now)
+
+    def to_dict(self) -> dict[str, Any]:
+        """Convert to dictionary."""
+        return {
+            "id": self.id,
+            "event_id": self.event_id,
+            "trial_id": self.trial_id,
+            "task_id": self.task_id,
+            "instructor_id": self.instructor_id,
+            "instructor_role": self.instructor_role,
+            "instruction_text": self.instruction_text,
+            "actor_id": self.actor_id,
+            "actor_role": self.actor_role,
+            "action_taken": self.action_taken,
+            "action_params": json.loads(self.action_params_json) if self.action_params_json else None,
+            "matched_handoff_id": self.matched_handoff_id,
+            "match_confidence": self.match_confidence,
+            "handoff_successful": bool(self.handoff_successful),
+            "latency_turns": self.latency_turns,
+            "timestamp": self.timestamp.isoformat() if self.timestamp else None,
+        }
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> "CoordinationEventModel":
+        """Create from dictionary."""
+        return cls(
+            id=data["id"],
+            event_id=data["event_id"],
+            trial_id=data["trial_id"],
+            task_id=data["task_id"],
+            instructor_id=data["instructor_id"],
+            instructor_role=data["instructor_role"],
+            instruction_text=data.get("instruction_text"),
+            actor_id=data.get("actor_id"),
+            actor_role=data.get("actor_role"),
+            action_taken=data.get("action_taken"),
+            action_params_json=json.dumps(data["action_params"]) if data.get("action_params") else None,
+            matched_handoff_id=data.get("matched_handoff_id"),
+            match_confidence=data.get("match_confidence", 0.0),
+            handoff_successful=int(data.get("handoff_successful", False)),
+            latency_turns=data.get("latency_turns", 0),
+        )
+
+
+class SoloDualComparisonModel(Base):
+    """Database model for solo vs dual mode comparison results.
+
+    Stores comparison metrics per ADR-020.1 (τ²-bench compatibility).
+    """
+
+    __tablename__ = "solo_dual_comparisons"
+
+    id = Column(String(36), primary_key=True)
+    task_id = Column(String(100), nullable=False, index=True)
+
+    # Solo mode results
+    solo_trials = Column(Integer, default=0)
+    solo_successes = Column(Integer, default=0)
+    solo_pass_1 = Column(Float, default=0.0)
+    solo_avg_steps = Column(Float, default=0.0)
+
+    # Dual mode results
+    dual_trials = Column(Integer, default=0)
+    dual_successes = Column(Integer, default=0)
+    dual_pass_1 = Column(Float, default=0.0)
+    dual_avg_steps = Column(Float, default=0.0)
+
+    # Key metrics
+    performance_drop = Column(Float, default=0.0)
+    step_increase = Column(Float, default=0.0)
+
+    # Metadata
+    computed_at = Column(DateTime, default=_utc_now)
+
+    def to_dict(self) -> dict[str, Any]:
+        """Convert to dictionary."""
+        return {
+            "id": self.id,
+            "task_id": self.task_id,
+            "solo_trials": self.solo_trials,
+            "solo_successes": self.solo_successes,
+            "solo_pass_1": self.solo_pass_1,
+            "solo_avg_steps": self.solo_avg_steps,
+            "dual_trials": self.dual_trials,
+            "dual_successes": self.dual_successes,
+            "dual_pass_1": self.dual_pass_1,
+            "dual_avg_steps": self.dual_avg_steps,
+            "performance_drop": self.performance_drop,
+            "step_increase": self.step_increase,
+            "computed_at": self.computed_at.isoformat() if self.computed_at else None,
+        }
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> "SoloDualComparisonModel":
+        """Create from dictionary."""
+        return cls(
+            id=data["id"],
+            task_id=data["task_id"],
+            solo_trials=data.get("solo_trials", 0),
+            solo_successes=data.get("solo_successes", 0),
+            solo_pass_1=data.get("solo_pass_1", 0.0),
+            solo_avg_steps=data.get("solo_avg_steps", 0.0),
+            dual_trials=data.get("dual_trials", 0),
+            dual_successes=data.get("dual_successes", 0),
+            dual_pass_1=data.get("dual_pass_1", 0.0),
+            dual_avg_steps=data.get("dual_avg_steps", 0.0),
+            performance_drop=data.get("performance_drop", 0.0),
+            step_increase=data.get("step_increase", 0.0),
         )

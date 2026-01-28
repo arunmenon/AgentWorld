@@ -122,11 +122,54 @@ class StateVerificationResult:
     success: bool               # r_action AND r_output
     state_diff: list[StateDiff] # Detailed differences
     missing_outputs: list[str]  # Which outputs were missing
+
+    # Partial credit support (addresses binary outcome limitation)
+    partial_credit: float       # 0.0-1.0 based on steps completed
+    steps_completed: int        # How many steps completed before failure
+    steps_total: int            # Total steps in task
+```
+
+#### Partial Credit Scoring
+
+Binary pass/fail loses nuance (task failing at step 9/10 scores same as 1/10). Partial credit addresses this:
+
+```python
+def calculate_partial_credit(
+    steps_completed: int,
+    steps_total: int,
+    state_diff: list[StateDiff]
+) -> float:
+    """Calculate partial credit for incomplete tasks.
+
+    Combines:
+    - Step completion ratio (50% weight)
+    - State progress ratio (50% weight)
+    """
+    step_ratio = steps_completed / steps_total if steps_total > 0 else 0
+
+    # Calculate how close final state is to goal state
+    if not state_diff:
+        state_ratio = 1.0
+    else:
+        total_fields = len(state_diff)
+        correct_fields = sum(1 for d in state_diff if d.matches)
+        state_ratio = correct_fields / total_fields
+
+    return (step_ratio * 0.5) + (state_ratio * 0.5)
 ```
 
 ### 3. Task Definitions with Ground Truth
 
 ```python
+@dataclass
+class Checkpoint:
+    """Intermediate verification point for long-running tasks."""
+    checkpoint_id: str
+    name: str
+    after_step: int           # Verify after this step number
+    expected_state: dict      # Partial state that must be true
+    description: str          # What this checkpoint verifies
+
 @dataclass
 class TaskDefinition:
     """Complete task definition with ground truth."""
@@ -150,6 +193,45 @@ class TaskDefinition:
 
     # Policy rules to follow
     policy_rules: list[str]
+
+    # Checkpoints for long-running tasks (addresses visibility gap)
+    checkpoints: list[Checkpoint] = field(default_factory=list)
+```
+
+#### Checkpoints for Long-Running Tasks
+
+Long tasks have no visibility into progress before completion. Checkpoints provide intermediate verification:
+
+```python
+# Example: Multi-step payment task with checkpoints
+task = TaskDefinition(
+    task_id="multi_party_payment",
+    name="Multi-Party Payment Split",
+    # ... other fields ...
+    checkpoints=[
+        Checkpoint(
+            checkpoint_id="balance_checked",
+            name="Balance Verification",
+            after_step=2,
+            expected_state={"agent_checked_balance": True},
+            description="Agent verified sufficient funds before split"
+        ),
+        Checkpoint(
+            checkpoint_id="first_transfer_done",
+            name="First Transfer Complete",
+            after_step=5,
+            expected_state={"alice.balance": 900, "bob.balance": 550},
+            description="First party received their share"
+        ),
+        Checkpoint(
+            checkpoint_id="all_notified",
+            name="All Parties Notified",
+            after_step=8,
+            expected_state={"notifications_sent": 3},
+            description="All recipients were notified"
+        ),
+    ]
+)
 ```
 
 ### 4. Fault Classification
@@ -182,9 +264,94 @@ class PolicyRule:
     description: str
     category: str  # 'confirmation', 'limit', 'eligibility', 'prohibition'
     trigger_actions: list[str]
-    conditions: list[dict]
+    conditions: list[PolicyCondition]  # Typed conditions (see DSL below)
     requirements: list[str]
     severity: str  # 'error', 'warning'
+```
+
+#### Policy Condition DSL
+
+Policy conditions use a defined grammar (similar to ADR-019 logic language):
+
+```python
+@dataclass
+class PolicyCondition:
+    """Structured policy condition with explicit operators."""
+    field: str          # Path to value: "params.amount", "state.balance"
+    operator: str       # One of: eq, ne, gt, gte, lt, lte, in, not_in, matches, exists
+    value: Any          # Comparison value (or list for in/not_in)
+    negate: bool = False  # NOT this condition
+
+# Supported operators:
+POLICY_OPERATORS = {
+    "eq": lambda a, b: a == b,           # Equal
+    "ne": lambda a, b: a != b,           # Not equal
+    "gt": lambda a, b: a > b,            # Greater than
+    "gte": lambda a, b: a >= b,          # Greater than or equal
+    "lt": lambda a, b: a < b,            # Less than
+    "lte": lambda a, b: a <= b,          # Less than or equal
+    "in": lambda a, b: a in b,           # Value in list
+    "not_in": lambda a, b: a not in b,   # Value not in list
+    "matches": lambda a, b: re.match(b, str(a)),  # Regex match
+    "exists": lambda a, b: a is not None,  # Field exists
+    "contains": lambda a, b: b in a,     # String/list contains
+}
+
+# Example: "Confirm transfers over $100"
+PolicyRule(
+    rule_id="confirm_large_transfer",
+    name="Confirm Large Transfers",
+    trigger_actions=["transfer"],
+    conditions=[
+        PolicyCondition(field="params.amount", operator="gt", value=100)
+    ],
+    requirements=["Agent must ask for confirmation before executing"],
+    severity="error"
+)
+
+# Example: "Only VIP customers can use premium features"
+PolicyRule(
+    rule_id="vip_only_premium",
+    name="VIP-Only Premium Features",
+    trigger_actions=["enable_premium", "unlock_feature"],
+    conditions=[
+        PolicyCondition(field="state.customer.tier", operator="in", value=["gold", "platinum"])
+    ],
+    requirements=["Verify customer VIP status before enabling"],
+    severity="error"
+)
+```
+
+#### Compound Conditions
+
+For complex rules, use compound conditions with AND/OR logic:
+
+```python
+@dataclass
+class CompoundCondition:
+    """Combine multiple conditions."""
+    logic: str  # "and" | "or"
+    conditions: list[PolicyCondition | CompoundCondition]
+
+# Example: "Refunds over $50 require manager approval AND reason"
+PolicyRule(
+    rule_id="refund_approval",
+    conditions=[
+        CompoundCondition(
+            logic="and",
+            conditions=[
+                PolicyCondition(field="params.amount", operator="gt", value=50),
+                CompoundCondition(
+                    logic="or",
+                    conditions=[
+                        PolicyCondition(field="params.reason", operator="exists", value=True),
+                        PolicyCondition(field="params.manager_override", operator="eq", value=True)
+                    ]
+                )
+            ]
+        )
+    ]
+)
 ```
 
 ### Database Schema
@@ -221,7 +388,7 @@ CREATE TABLE task_sets (
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
--- Trial results
+-- Trial results (extended with partial credit and retry tracking)
 CREATE TABLE trial_results (
     id TEXT PRIMARY KEY,
     task_id TEXT NOT NULL,
@@ -229,6 +396,11 @@ CREATE TABLE trial_results (
     success BOOLEAN NOT NULL,
     state_match BOOLEAN,
     output_match BOOLEAN,
+    partial_credit REAL,           -- NEW: 0.0-1.0 score
+    steps_completed INTEGER,       -- NEW: steps before failure
+    steps_total INTEGER,           -- NEW: total steps in task
+    actions_retried INTEGER,       -- NEW: retry tracking
+    total_retry_count INTEGER,     -- NEW: sum of all retries
     duration_seconds REAL,
     token_count INTEGER,
     error_message TEXT,
@@ -347,6 +519,61 @@ src/agentworld/
 
 **Total: ~5,370 lines of new code**
 
+### 6. Retry Semantics
+
+Should a retried action count against pass^k? τ-bench allows retries within a trial. We define explicit retry behavior:
+
+```python
+@dataclass
+class RetryConfig:
+    """Configuration for retry behavior within trials."""
+    max_retries_per_action: int = 2   # Max times to retry a failed action
+    retry_delay_ms: int = 100          # Delay between retries
+    count_retries_as_steps: bool = True  # Retries count toward step limit
+
+@dataclass
+class TrialResult:
+    """Extended trial result with retry tracking."""
+    trial_id: str
+    success: bool
+    partial_credit: float         # NEW: 0.0-1.0
+
+    # Retry tracking
+    actions_attempted: int
+    actions_retried: int          # How many actions needed retry
+    total_retry_count: int        # Sum of all retries
+
+    # For pass^k calculation:
+    # - A trial with retries can still be "successful"
+    # - Excessive retries may indicate fragility even if successful
+```
+
+#### Retry Behavior Rules
+
+| Scenario | Behavior | pass^k Impact |
+|----------|----------|---------------|
+| Action succeeds first try | Normal | Counts as success |
+| Action succeeds after retry | Success with note | Counts as success |
+| Action fails after max retries | Trial fails | Counts as failure |
+| Within-trial retry | Allowed | No penalty |
+| Cross-trial retry | Not allowed | Each trial independent |
+
+```python
+# Example: Action with retries
+async def execute_with_retry(
+    action: str,
+    params: dict,
+    config: RetryConfig
+) -> ActionResult:
+    for attempt in range(config.max_retries_per_action + 1):
+        result = await execute_action(action, params)
+        if result.success:
+            return result.with_retry_count(attempt)
+        if attempt < config.max_retries_per_action:
+            await asyncio.sleep(config.retry_delay_ms / 1000)
+    return result.with_failure()
+```
+
 ## Consequences
 
 ### Positive
@@ -355,12 +582,36 @@ src/agentworld/
 - Structured error analysis guides improvement
 - Compatible with existing evaluation system
 - Enables regression testing
+- Partial credit provides nuanced scoring beyond binary pass/fail
+- Checkpoints enable progress monitoring for long tasks
+- Explicit retry semantics match τ-bench behavior
 
 ### Negative
 - Requires task definition effort
-- Binary outcomes lose nuance
 - Policy compliance adds complexity
 - Multiple trial runs increase compute cost
+
+### Constraints
+
+**Agent ID Immutability**
+
+Per ADR-020.1, agent IDs are immutable within a simulation. This constraint is critical for:
+- Per-agent state isolation (state keys use `{app_id}:{agent_id}`)
+- Coordination tracking (handoffs reference stable agent IDs)
+- Fault attribution (errors must be traceable to specific agents)
+
+```python
+# Agent IDs must not change during simulation execution
+# If agent identity must change, use the migration function in ADR-020.1
+# and log the change for audit purposes
+```
+
+**State Consistency**
+
+When using per-agent state (`state_type=per_agent`):
+- Each agent's state is isolated using the key format `{app_id}:{agent_id}`
+- State updates by one agent never affect another agent's state
+- State orphaning can occur if agent IDs change without migration
 
 ## Integration with ADR-010
 
@@ -436,4 +687,12 @@ ADR-020 **complements** ADR-010 (existing evaluation):
 
 - **ADR-010**: Evaluation Metrics - Behavioral evaluation
 - **ADR-017**: Simulated Apps - App execution
+- **ADR-020.1**: Dual-Control Extension - τ²-bench compatibility (extends this ADR)
 - **ADR-021**: App Benchmark & Quality - App definition evaluation (separate)
+
+## UI Reference
+
+See [docs/agentworld-adr-review.jsx](../docs/agentworld-adr-review.jsx) for interactive UI mockups including:
+- Task Evaluation Dashboard with pass^k visualization
+- Fault classification summary view
+- Trial grid visualization

@@ -31,9 +31,13 @@ from agentworld.apps.base import (
 )
 from agentworld.apps.definition import (
     ActionDefinition,
+    AgentRole,
+    AppAccessType,
     AppDefinition,
     AppState,
+    AppStateType,
     ParamType,
+    ToolType,
 )
 from agentworld.apps.logic_engine import ExecutionContext, LogicEngine
 
@@ -47,7 +51,10 @@ class DynamicApp(BaseSimulatedApp):
     definition instead of Python code. The business logic is defined
     in the definition's action logic blocks and executed by the LogicEngine.
 
-    Per ADR-018.
+    Per ADR-018, extended per ADR-020.1 for τ²-bench support:
+    - Access control checking before action execution
+    - Per-agent state isolation when state_type=PER_AGENT
+    - Agent role tracking for role-restricted apps
     """
 
     def __init__(self, definition: AppDefinition):
@@ -60,6 +67,10 @@ class DynamicApp(BaseSimulatedApp):
         self._definition = definition
         self._logic_engine = LogicEngine()
         self._app_state = AppState()
+
+        # NEW: Agent role tracking for access control (ADR-020.1)
+        self._agent_roles: dict[str, str] = {}  # agent_id -> role
+        self._agent_role_tags: dict[str, list[str]] = {}  # agent_id -> role_tags
 
     @property
     def app_id(self) -> str:
@@ -81,12 +92,109 @@ class DynamicApp(BaseSimulatedApp):
         """Get the underlying definition."""
         return self._definition
 
-    def get_actions(self) -> list[AppAction]:
+    @property
+    def access_type(self) -> AppAccessType:
+        """Get app access type."""
+        return self._definition.access_type
+
+    @property
+    def state_type(self) -> AppStateType:
+        """Get app state type."""
+        return self._definition.state_type
+
+    # =========================================================================
+    # Access Control (ADR-020.1)
+    # =========================================================================
+
+    def set_agent_role(
+        self,
+        agent_id: str,
+        role: str | AgentRole,
+        role_tags: list[str] | None = None
+    ) -> None:
+        """Set an agent's role for access control.
+
+        Args:
+            agent_id: ID of the agent
+            role: Agent's primary role
+            role_tags: Additional role tags for fine-grained access
+        """
+        if isinstance(role, AgentRole):
+            self._agent_roles[agent_id] = role.value
+        else:
+            self._agent_roles[agent_id] = role
+
+        if role_tags:
+            self._agent_role_tags[agent_id] = role_tags
+
+    def get_agent_role(self, agent_id: str) -> str:
+        """Get an agent's role.
+
+        Returns:
+            Agent's role string, defaults to 'peer' if not set
+        """
+        return self._agent_roles.get(agent_id, AgentRole.PEER.value)
+
+    def can_agent_access(self, agent_id: str) -> bool:
+        """Check if an agent can access this app.
+
+        Per ADR-020.1 access control:
+        - SHARED: All agents can access
+        - ROLE_RESTRICTED: Only agents with matching role
+        - PER_AGENT: All agents can access (each gets own instance)
+
+        Args:
+            agent_id: ID of the agent to check
+
+        Returns:
+            True if agent can access this app
+        """
+        role = self.get_agent_role(agent_id)
+        role_tags = self._agent_role_tags.get(agent_id)
+        return self._definition.can_agent_access(role, role_tags)
+
+    def check_access(self, agent_id: str) -> tuple[bool, str]:
+        """Check access and return detailed result.
+
+        Args:
+            agent_id: ID of the agent to check
+
+        Returns:
+            Tuple of (can_access, error_message)
+        """
+        if self.can_agent_access(agent_id):
+            return True, ""
+
+        role = self.get_agent_role(agent_id)
+        allowed = self._definition.allowed_roles or []
+        return False, (
+            f"Access denied: Agent '{agent_id}' with role '{role}' "
+            f"cannot access app '{self.app_id}'. "
+            f"Allowed roles: {allowed}"
+        )
+
+    def get_actions(self, agent_id: str | None = None) -> list[AppAction]:
         """Get available actions with their schemas.
 
         Converts ActionDefinition to AppAction for compatibility with
         the existing protocol.
+
+        Args:
+            agent_id: Optional agent ID for access control filtering.
+                     If provided and agent cannot access this app,
+                     returns empty list.
+
+        Returns:
+            List of available actions (may include tool_type metadata)
         """
+        # Check access control if agent_id provided
+        if agent_id and not self.can_agent_access(agent_id):
+            logger.debug(
+                f"Agent '{agent_id}' cannot access app '{self.app_id}', "
+                f"returning empty action list"
+            )
+            return []
+
         actions = []
         for action_def in self._definition.actions:
             # Convert ParamSpecDef to ParamSpec
@@ -106,11 +214,15 @@ class DynamicApp(BaseSimulatedApp):
                     enum=spec_def.enum,
                 )
 
+            # Include tool_type in returns metadata (ADR-020.1)
+            returns_with_metadata = dict(action_def.returns)
+            returns_with_metadata["_tool_type"] = action_def.tool_type.value
+
             actions.append(AppAction(
                 name=action_def.name,
                 description=action_def.description,
                 parameters=params,
-                returns=action_def.returns,
+                returns=returns_with_metadata,
             ))
 
         return actions
@@ -123,6 +235,10 @@ class DynamicApp(BaseSimulatedApp):
         """Initialize app state for all agents.
 
         Creates per-agent state from state_schema and initializes shared state.
+
+        Per ADR-020.1:
+        - If state_type=SHARED, all agents share state
+        - If state_type=PER_AGENT, each agent has isolated state
         """
         self._app_state = AppState()
 
@@ -140,14 +256,29 @@ class DynamicApp(BaseSimulatedApp):
         # Apply initial_config overrides
         merged_config = {**self._definition.initial_config, **config}
 
-        # Initialize per-agent state
-        for agent_id in agents:
-            agent_state = copy.deepcopy(per_agent_defaults)
-            # Apply any agent-specific config (e.g., initial_balance)
-            for key, value in merged_config.items():
-                if key in agent_state:
-                    agent_state[key] = value
-            self._app_state.set_agent_state(agent_id, agent_state)
+        # Determine which agents get state based on state_type
+        if self.state_type == AppStateType.PER_AGENT:
+            # PER_AGENT state: Each agent gets isolated state
+            for agent_id in agents:
+                agent_state = copy.deepcopy(per_agent_defaults)
+                # Apply any agent-specific config
+                for key, value in merged_config.items():
+                    if key in agent_state:
+                        agent_state[key] = value
+                self._app_state.set_agent_state(agent_id, agent_state)
+
+            logger.debug(
+                f"Initialized PER_AGENT state for app '{self.app_id}' "
+                f"with {len(agents)} isolated instances"
+            )
+        else:
+            # SHARED state: Initialize per-agent state for all agents
+            for agent_id in agents:
+                agent_state = copy.deepcopy(per_agent_defaults)
+                for key, value in merged_config.items():
+                    if key in agent_state:
+                        agent_state[key] = value
+                self._app_state.set_agent_state(agent_id, agent_state)
 
         # Register agent names for name-to-ID resolution
         if hasattr(self, '_agent_names') and self._agent_names:
@@ -161,8 +292,37 @@ class DynamicApp(BaseSimulatedApp):
                 self._app_state.shared[key] = value
 
         logger.info(
-            f"Initialized DynamicApp '{self.app_id}' for {len(agents)} agents"
+            f"Initialized DynamicApp '{self.app_id}' for {len(agents)} agents "
+            f"(access={self.access_type.value}, state={self.state_type.value})"
         )
+
+    async def initialize_with_roles(
+        self,
+        simulation_id: str,
+        agents: list[str],
+        config: dict[str, Any],
+        agent_roles: dict[str, str | AgentRole] | None = None,
+        agent_role_tags: dict[str, list[str]] | None = None,
+    ) -> None:
+        """Initialize app with agent role information.
+
+        Extended initialization method for ADR-020.1 dual-control support.
+
+        Args:
+            simulation_id: ID of the simulation
+            agents: List of agent IDs to initialize
+            config: App configuration
+            agent_roles: Mapping of agent_id -> role
+            agent_role_tags: Mapping of agent_id -> role_tags
+        """
+        # Set agent roles before initialization
+        if agent_roles:
+            for agent_id, role in agent_roles.items():
+                role_tags = agent_role_tags.get(agent_id) if agent_role_tags else None
+                self.set_agent_role(agent_id, role, role_tags)
+
+        # Call standard initialization
+        await self.initialize(simulation_id, agents, config)
 
     def _get_default_for_type(self, param_type: ParamType, default: Any) -> Any:
         """Get default value for a parameter type."""
@@ -186,6 +346,8 @@ class DynamicApp(BaseSimulatedApp):
     ) -> AppResult:
         """Execute an action using the logic engine.
 
+        Per ADR-020.1, checks access control before execution.
+
         Args:
             agent_id: ID of the agent performing the action
             action: Action name
@@ -194,6 +356,12 @@ class DynamicApp(BaseSimulatedApp):
         Returns:
             AppResult with success/failure and data
         """
+        # Check access control (ADR-020.1)
+        can_access, error_msg = self.check_access(agent_id)
+        if not can_access:
+            logger.warning(f"Access denied for agent '{agent_id}' on app '{self.app_id}'")
+            return AppResult.fail(error_msg)
+
         # Find action definition
         action_def = self._definition.get_action(action)
         if action_def is None:
@@ -212,6 +380,12 @@ class DynamicApp(BaseSimulatedApp):
 
         # Execute logic
         result = await self._logic_engine.execute(action_def.logic, context)
+
+        # Log action with tool_type for analysis (ADR-020.1)
+        logger.debug(
+            f"Executed {action_def.tool_type.value.upper()} action '{action}' "
+            f"for agent '{agent_id}' on app '{self.app_id}'"
+        )
 
         # Process observations (set app_id and add to internal queue)
         for to_agent, observation in context.observations:

@@ -2,6 +2,14 @@ import { AlertCircle } from 'lucide-react'
 import { Input, Textarea, Label } from '@/components/ui'
 import { cn } from '@/lib/utils'
 import type { AppCategory } from '@/lib/api'
+import {
+  AccessTypeSelector,
+  RoleCheckboxes,
+  StateTypeSelector,
+  type AccessType,
+  type AgentRole,
+  type StateType,
+} from '@/components/app-studio/access'
 
 interface AppInfoData {
   name: string
@@ -9,6 +17,10 @@ interface AppInfoData {
   description: string
   category: AppCategory
   icon: string
+  // Access control (ADR-020.1)
+  access_type?: AccessType
+  allowed_roles?: AgentRole[]
+  state_type?: StateType
 }
 
 interface ValidationErrors {
@@ -189,6 +201,45 @@ export function InfoStep({
             />
           </p>
         </div>
+      </div>
+
+      {/* Access Control Section (ADR-020.1) */}
+      <div className="space-y-4 pt-4 border-t border-border">
+        <div className="text-center">
+          <h3 className="text-lg font-medium mb-1">Access Control</h3>
+          <p className="text-sm text-foreground-secondary">
+            Configure who can access this app and how state is managed
+          </p>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          {/* Access Type */}
+          <AccessTypeSelector
+            value={data.access_type || 'shared'}
+            onChange={(access_type) => {
+              onChange({ access_type })
+              // If PER_AGENT access, force PER_AGENT state
+              if (access_type === 'per_agent') {
+                onChange({ access_type, state_type: 'per_agent' })
+              }
+            }}
+          />
+
+          {/* State Type */}
+          <StateTypeSelector
+            value={data.state_type || 'shared'}
+            onChange={(state_type) => onChange({ state_type })}
+            accessType={data.access_type || 'shared'}
+          />
+        </div>
+
+        {/* Role Selection (shown when role_restricted) */}
+        {data.access_type === 'role_restricted' && (
+          <RoleCheckboxes
+            value={data.allowed_roles || []}
+            onChange={(allowed_roles) => onChange({ allowed_roles })}
+          />
+        )}
       </div>
     </div>
   )

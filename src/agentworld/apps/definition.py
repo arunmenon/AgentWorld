@@ -30,6 +30,44 @@ class AppCategory(str, Enum):
     CUSTOM = "custom"
 
 
+class AppAccessType(str, Enum):
+    """Who can access this app.
+
+    Per ADR-020.1 for τ²-bench dual-control support.
+    """
+    SHARED = "shared"                    # All agents (current default)
+    ROLE_RESTRICTED = "role_restricted"  # Only specific roles
+    PER_AGENT = "per_agent"              # Each agent has their own instance
+
+
+class AppStateType(str, Enum):
+    """How state is managed.
+
+    Per ADR-020.1 for τ²-bench dual-control support.
+    """
+    SHARED = "shared"       # Single state for all agents
+    PER_AGENT = "per_agent" # Each agent has isolated state
+
+
+class ToolType(str, Enum):
+    """Tool classification for analysis and policy.
+
+    Per ADR-020.1 for τ²-bench dual-control support.
+    """
+    READ = "read"   # Queries state, no modifications
+    WRITE = "write" # Modifies state
+
+
+class AgentRole(str, Enum):
+    """Built-in agent roles for dual-control scenarios.
+
+    Per ADR-020.1 for τ²-bench dual-control support.
+    """
+    PEER = "peer"                    # Default: equal access to shared apps
+    SERVICE_AGENT = "service_agent"  # Backend access, guides users
+    CUSTOMER = "customer"            # Device access, follows instructions
+
+
 class ParamType(str, Enum):
     """Valid parameter types."""
 
@@ -426,6 +464,10 @@ class ActionDefinition:
     """Definition of a single action.
 
     Contains the action's parameters, return schema, and business logic.
+
+    Per ADR-020.1, includes tool_type annotation for τ²-bench compatibility:
+    - READ: Queries state, no modifications
+    - WRITE: Modifies state
     """
 
     name: str
@@ -433,16 +475,23 @@ class ActionDefinition:
     logic: list[LogicBlock]
     parameters: dict[str, ParamSpecDef] = field(default_factory=dict)
     returns: dict[str, Any] = field(default_factory=dict)
+    tool_type: ToolType = ToolType.WRITE  # Default to WRITE for safety
 
     def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary for JSON serialization."""
-        return {
+        result = {
             "name": self.name,
             "description": self.description,
             "parameters": {k: v.to_dict() for k, v in self.parameters.items()},
             "returns": self.returns,
             "logic": [b.to_dict() for b in self.logic],
         }
+        # Only include tool_type if not default (for backward compatibility)
+        if self.tool_type != ToolType.WRITE:
+            result["toolType"] = self.tool_type.value
+        else:
+            result["toolType"] = self.tool_type.value
+        return result
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> "ActionDefinition":
@@ -453,12 +502,17 @@ class ActionDefinition:
 
         logic = [LogicBlock.from_dict(b) for b in data.get("logic", [])]
 
+        # Parse tool_type with backward compatibility
+        tool_type_str = data.get("toolType") or data.get("tool_type")
+        tool_type = ToolType(tool_type_str) if tool_type_str else ToolType.WRITE
+
         return cls(
             name=data["name"],
             description=data.get("description", ""),
             parameters=parameters,
             returns=data.get("returns", {}),
             logic=logic,
+            tool_type=tool_type,
         )
 
 
@@ -538,7 +592,11 @@ class AppDefinition:
     This is the complete definition of a dynamic app that can be
     stored in a database and executed by the DynamicApp engine.
 
-    Per ADR-018 and ADR-019.
+    Per ADR-018 and ADR-019, extended per ADR-020.1 for τ²-bench support:
+    - access_type: Who can access this app (SHARED, ROLE_RESTRICTED, PER_AGENT)
+    - allowed_roles: Roles that can access when role_restricted (e.g., ["service_agent"])
+    - allowed_role_tags: Additional tag-based access (e.g., ["supervisor", "admin"])
+    - state_type: How state is managed (SHARED, PER_AGENT)
     """
 
     app_id: str
@@ -551,12 +609,27 @@ class AppDefinition:
     initial_config: dict[str, Any] = field(default_factory=dict)
     config_schema: list[ConfigFieldDef] = field(default_factory=list)  # For UI config forms
 
+    # NEW: Access control (ADR-020.1, defaults for backward compatibility)
+    access_type: AppAccessType = AppAccessType.SHARED
+    allowed_roles: list[str] | None = None  # e.g., ["service_agent", "customer"]
+    allowed_role_tags: list[str] | None = None  # e.g., ["supervisor", "admin"]
+
+    # NEW: State management (ADR-020.1, defaults for backward compatibility)
+    state_type: AppStateType = AppStateType.SHARED
+
     def __post_init__(self):
-        """Validate app_id format."""
+        """Validate app_id format and access/state combinations."""
         if not APP_ID_PATTERN.match(self.app_id):
             raise ValueError(
                 f"Invalid app_id '{self.app_id}'. Must be snake_case, "
                 "start with a letter, and be 2-50 characters."
+            )
+
+        # Validate access/state combinations per ADR-020.1
+        if self.access_type == AppAccessType.PER_AGENT and self.state_type == AppStateType.SHARED:
+            raise ValueError(
+                "Invalid combination: access_type=PER_AGENT requires state_type=PER_AGENT. "
+                "If each agent has own instance, state must be isolated."
             )
 
     def to_dict(self) -> dict[str, Any]:
@@ -577,6 +650,15 @@ class AppDefinition:
             result["initial_config"] = self.initial_config
         if self.config_schema:
             result["config_schema"] = [c.to_dict() for c in self.config_schema]
+
+        # NEW: Access control fields (always include for clarity)
+        result["access_type"] = self.access_type.value if isinstance(self.access_type, AppAccessType) else self.access_type
+        if self.allowed_roles:
+            result["allowed_roles"] = self.allowed_roles
+        if self.allowed_role_tags:
+            result["allowed_role_tags"] = self.allowed_role_tags
+        result["state_type"] = self.state_type.value if isinstance(self.state_type, AppStateType) else self.state_type
+
         return result
 
     @classmethod
@@ -585,6 +667,14 @@ class AppDefinition:
         actions = [ActionDefinition.from_dict(a) for a in data.get("actions", [])]
         state_schema = [StateFieldDef.from_dict(s) for s in data.get("state_schema", [])]
         config_schema = [ConfigFieldDef.from_dict(c) for c in data.get("config_schema", [])]
+
+        # Parse access_type with backward compatibility (defaults to SHARED)
+        access_type_str = data.get("access_type") or data.get("accessType")
+        access_type = AppAccessType(access_type_str) if access_type_str else AppAccessType.SHARED
+
+        # Parse state_type with backward compatibility (defaults to SHARED)
+        state_type_str = data.get("state_type") or data.get("stateType")
+        state_type = AppStateType(state_type_str) if state_type_str else AppStateType.SHARED
 
         return cls(
             app_id=data["app_id"],
@@ -596,6 +686,10 @@ class AppDefinition:
             state_schema=state_schema,
             initial_config=data.get("initial_config", {}),
             config_schema=config_schema,
+            access_type=access_type,
+            allowed_roles=data.get("allowed_roles") or data.get("allowedRoles"),
+            allowed_role_tags=data.get("allowed_role_tags") or data.get("allowedRoleTags"),
+            state_type=state_type,
         )
 
     def get_action(self, action_name: str) -> ActionDefinition | None:
@@ -608,6 +702,46 @@ class AppDefinition:
     def get_action_names(self) -> list[str]:
         """Get list of action names."""
         return [a.name for a in self.actions]
+
+    def can_agent_access(self, agent_role: str | AgentRole, agent_role_tags: list[str] | None = None) -> bool:
+        """Check if an agent with given role can access this app.
+
+        Per ADR-020.1 access control logic:
+        - SHARED: All agents can access
+        - ROLE_RESTRICTED: Only agents with matching role or role_tags
+        - PER_AGENT: All agents can access (each gets own instance)
+
+        Args:
+            agent_role: Agent's primary role (AgentRole enum or string)
+            agent_role_tags: Agent's additional role tags
+
+        Returns:
+            True if agent can access this app
+        """
+        # Normalize role to string
+        if isinstance(agent_role, AgentRole):
+            role_str = agent_role.value
+        else:
+            role_str = agent_role
+
+        # SHARED and PER_AGENT always allow access
+        if self.access_type in (AppAccessType.SHARED, AppAccessType.PER_AGENT):
+            return True
+
+        # ROLE_RESTRICTED: check primary role and role_tags
+        if self.access_type == AppAccessType.ROLE_RESTRICTED:
+            # Check primary role
+            if self.allowed_roles and role_str in self.allowed_roles:
+                return True
+
+            # Check role tags
+            if self.allowed_role_tags and agent_role_tags:
+                if set(agent_role_tags) & set(self.allowed_role_tags):
+                    return True
+
+            return False
+
+        return True  # Default allow for unknown access types
 
 
 # ==============================================================================

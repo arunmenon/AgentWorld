@@ -73,6 +73,14 @@ from agentworld.apps.evaluation.coverage import (
     format_coverage_report,
     create_trace_from_scenario_result,
 )
+from agentworld.apps.evaluation.dual_control_apps import (
+    get_dual_control_apps,
+    get_dual_control_app,
+    get_apps_by_domain,
+    get_service_agent_apps,
+    get_customer_apps,
+    DUAL_CONTROL_APPS,
+)
 
 __all__ = [
     # Quality
@@ -133,4 +141,11 @@ __all__ = [
     "generate_coverage_recommendations",
     "format_coverage_report",
     "create_trace_from_scenario_result",
+    # Dual Control Apps (ADR-020.1)
+    "get_dual_control_apps",
+    "get_dual_control_app",
+    "get_apps_by_domain",
+    "get_service_agent_apps",
+    "get_customer_apps",
+    "DUAL_CONTROL_APPS",
 ]

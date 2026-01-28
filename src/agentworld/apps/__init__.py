@@ -84,11 +84,16 @@ from agentworld.apps.definition import (
     ErrorBlock,
     BranchBlock,
     LoopBlock,
-    # Enums
+    # Enums (ADR-018)
     AppCategory,
     ParamType,
     LogicBlockType,
     UpdateOperation,
+    # Enums (ADR-020.1 dual-control)
+    AppAccessType,
+    AppStateType,
+    ToolType,
+    AgentRole,
 )
 from agentworld.apps.dynamic import DynamicApp, create_dynamic_app
 from agentworld.apps.expression import (
@@ -146,11 +151,16 @@ __all__ = [
     "ErrorBlock",
     "BranchBlock",
     "LoopBlock",
-    # Enums
+    # Enums (ADR-018)
     "AppCategory",
     "ParamType",
     "LogicBlockType",
     "UpdateOperation",
+    # Enums (ADR-020.1 dual-control)
+    "AppAccessType",
+    "AppStateType",
+    "ToolType",
+    "AgentRole",
     # Dynamic app classes
     "DynamicApp",
     "create_dynamic_app",

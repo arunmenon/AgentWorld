@@ -67,6 +67,7 @@ def create_app(
         apps,
         app_definitions,
         tasks,
+        dual_control,
     )
 
     app.include_router(health.router, tags=["Health"])
@@ -79,6 +80,7 @@ def create_app(
     app.include_router(apps.router, prefix="/api/v1", tags=["Apps"])
     app.include_router(app_definitions.router, prefix="/api/v1", tags=["App Definitions"])
     app.include_router(tasks.router, prefix="/api/v1", tags=["Tasks"])
+    app.include_router(dual_control.router, prefix="/api/v1", tags=["Dual Control Tasks"])
 
     # Register WebSocket
     from agentworld.api.websocket import register_websocket

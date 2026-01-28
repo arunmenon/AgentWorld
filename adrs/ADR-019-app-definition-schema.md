@@ -941,8 +941,67 @@ agent.history[-1]         # Last item (negative index)
 
 ---
 
+## JSON ↔ Python Field Mapping
+
+Per ADR-020.1, the following table documents the canonical mapping between JSON schema field names (camelCase) and Python attribute names (snake_case):
+
+| JSON Field | Python Attribute | Notes |
+|------------|------------------|-------|
+| `appId` | `app_id` | Also accepts `app_id` in JSON |
+| `perAgent` | `per_agent` | StateFieldDef |
+| `toolType` | `tool_type` | ActionDefinition (ADR-020.1) |
+| `accessType` | `access_type` | AppDefinition (ADR-020.1) |
+| `stateType` | `state_type` | AppDefinition (ADR-020.1) |
+| `allowedRoles` | `allowed_roles` | AppDefinition (ADR-020.1) |
+| `allowedRoleTags` | `allowed_role_tags` | AppDefinition (ADR-020.1) |
+| `errorMessage` | `error_message` | ValidateBlock |
+| `minValue` | `min_value` | ParamSpecDef |
+| `maxValue` | `max_value` | ParamSpecDef |
+| `minLength` | `min_length` | ParamSpecDef |
+| `maxLength` | `max_length` | ParamSpecDef |
+| `initialConfig` | `initial_config` | AppDefinition |
+| `configSchema` | `config_schema` | AppDefinition |
+| `stateSchema` | `state_schema` | AppDefinition |
+
+**Serialization Rule:** When converting to JSON (`.to_dict()`), use camelCase. When parsing from JSON (`.from_dict()`), accept both camelCase and snake_case for robustness.
+
+---
+
+## Access Control Extension (ADR-020.1)
+
+Per ADR-020.1, the App Definition schema is extended with access control fields for τ²-bench dual-control support:
+
+### New Fields in AppDefinition
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `access_type` | `shared` \| `role_restricted` \| `per_agent` | `shared` | Who can access this app |
+| `allowed_roles` | `string[]` | `null` | Roles that can access when role_restricted |
+| `allowed_role_tags` | `string[]` | `null` | Additional tags for fine-grained access |
+| `state_type` | `shared` \| `per_agent` | `shared` | How state is managed |
+
+### New Field in ActionDefinition
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `tool_type` | `read` \| `write` | `write` | Tool classification for analysis |
+
+### Valid Access/State Combinations
+
+| access_type | state_type | Valid | Example |
+|-------------|------------|-------|---------|
+| `shared` | `shared` | ✅ | Chat system |
+| `shared` | `per_agent` | ✅ | Personal notepad |
+| `role_restricted` | `shared` | ✅ | Backend DB |
+| `role_restricted` | `per_agent` | ✅ | User device |
+| `per_agent` | `shared` | ❌ | Invalid |
+| `per_agent` | `per_agent` | ✅ | Personal sandbox |
+
+---
+
 ## References
 
 - ADR-018: App Studio Backend - Dynamic App Engine
 - ADR-017: Simulated Apps Framework - Action/Result types
+- ADR-020.1: Dual-Control Extension for τ²-bench Compatibility
 - [JSON Schema Specification](https://json-schema.org/specification)

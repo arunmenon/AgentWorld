@@ -1,9 +1,19 @@
-"""API schemas for app definitions per ADR-018."""
+"""API schemas for app definitions per ADR-018 and ADR-020.1."""
 
 from datetime import datetime
 from typing import Any, Literal
 
 from pydantic import BaseModel, Field
+
+
+# ==============================================================================
+# Access Control Enums (ADR-020.1)
+# ==============================================================================
+
+AccessTypeLiteral = Literal["shared", "role_restricted", "per_agent"]
+StateTypeLiteral = Literal["shared", "per_agent"]
+ToolTypeLiteral = Literal["read", "write"]
+AgentRoleLiteral = Literal["peer", "service_agent", "customer"]
 
 
 # ==============================================================================
@@ -139,7 +149,10 @@ class ConfigFieldSchema(BaseModel):
 
 
 class ActionDefinitionSchema(BaseModel):
-    """Schema for an action definition."""
+    """Schema for an action definition.
+
+    Extended per ADR-020.1 with tool_type for τ²-bench compatibility.
+    """
 
     name: str = Field(..., description="Action name (snake_case)")
     description: str = Field(..., description="Action description")
@@ -152,6 +165,10 @@ class ActionDefinitionSchema(BaseModel):
     logic: list[LogicBlockSchema] = Field(
         default_factory=list, description="Logic blocks"
     )
+    # NEW: Tool type annotation (ADR-020.1)
+    toolType: ToolTypeLiteral = Field(
+        "write", description="Tool type: 'read' for queries, 'write' for mutations"
+    )
 
 
 # ==============================================================================
@@ -160,7 +177,10 @@ class ActionDefinitionSchema(BaseModel):
 
 
 class AppDefinitionBase(BaseModel):
-    """Base schema for app definition."""
+    """Base schema for app definition.
+
+    Extended per ADR-020.1 with access control fields for τ²-bench compatibility.
+    """
 
     name: str = Field(..., min_length=1, max_length=100, description="Display name")
     description: str = Field("", max_length=500, description="App description")
@@ -179,6 +199,26 @@ class AppDefinitionBase(BaseModel):
     )
     config_schema: list[ConfigFieldSchema] = Field(
         default_factory=list, description="Config field definitions for UI"
+    )
+
+    # NEW: Access control (ADR-020.1)
+    access_type: AccessTypeLiteral = Field(
+        "shared",
+        description="Who can access: 'shared' (all), 'role_restricted' (specific roles), 'per_agent' (each gets own instance)"
+    )
+    allowed_roles: list[AgentRoleLiteral | str] | None = Field(
+        None,
+        description="Roles that can access when role_restricted (e.g., ['service_agent'])"
+    )
+    allowed_role_tags: list[str] | None = Field(
+        None,
+        description="Additional role tags for fine-grained access (e.g., ['supervisor'])"
+    )
+
+    # NEW: State management (ADR-020.1)
+    state_type: StateTypeLiteral = Field(
+        "shared",
+        description="State management: 'shared' (all agents share) or 'per_agent' (isolated)"
     )
 
 

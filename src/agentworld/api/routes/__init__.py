@@ -11,6 +11,7 @@ from agentworld.api.routes import (
     apps,
     app_definitions,
     tasks,
+    dual_control,
 )
 
 __all__ = [
@@ -24,4 +25,5 @@ __all__ = [
     "apps",
     "app_definitions",
     "tasks",
+    "dual_control",
 ]

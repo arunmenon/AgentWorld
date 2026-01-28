@@ -1,8 +1,8 @@
 # AgentWorld Implementation Tracker
 
 > **Last Updated:** 2026-01-28
-> **Current Phase:** Phase 10h - Dual-Control Extension (NOT STARTED)
-> **Overall Progress:** 19/26 ADRs implemented (Phase 1: ADR-003, ADR-004, ADR-008, UI-ADR-005; Phase 2: ADR-005, ADR-006; Phase 3: ADR-009, ADR-011; Phase 4+: ADR-010, ADR-014, ADR-015; Phase 5: ADR-012, ADR-013; Phase 6: UI-ADR-001, UI-ADR-002; Phase 7: UI-ADR-003, UI-ADR-004; Phase 7+: ADR-016, ADR-017; Phase 10f: ADR-020 ~90%; Phase 10g: ADR-021 ✅)
+> **Current Phase:** Phase 10h - Dual-Control Extension (~85% complete)
+> **Overall Progress:** 19.5/26 ADRs implemented (Phase 1: ADR-003, ADR-004, ADR-008, UI-ADR-005; Phase 2: ADR-005, ADR-006; Phase 3: ADR-009, ADR-011; Phase 4+: ADR-010, ADR-014, ADR-015; Phase 5: ADR-012, ADR-013; Phase 6: UI-ADR-001, UI-ADR-002; Phase 7: UI-ADR-003, UI-ADR-004; Phase 7+: ADR-016, ADR-017; Phase 10f: ADR-020 ~90%; Phase 10g: ADR-021 ✅; Phase 10h: ADR-020.1 ~85%)
 
 ---
 
@@ -38,7 +38,7 @@
 | 10e | App Studio: Sim Integration | 🔴 | 🔴 | UI-013 | Add apps to simulations | `scripts/verify_phase10e.py` |
 | 10f | τ-bench Evaluation | 🟡 | ⚠️ | 020 | Pass^k metrics + task evaluation (~90%) | `scripts/verify_phase10f.py` |
 | 10g | App Benchmark Evaluation | 🟢 | ⚠️ | 021 | Quality metrics + scenario runner | `scripts/verify_phase10g.py` |
-| 10h | Dual-Control Extension | 🔴 | 🔴 | 020.1 | τ²-bench dual-control support | `scripts/verify_phase10h.py` |
+| 10h | Dual-Control Extension | 🟡 | 🟢 | 020.1 | τ²-bench dual-control support (~85%) | `pytest tests/api/test_dual_control.py tests/tasks/test_dual_control.py tests/apps/test_dual_control_apps.py` |
 
 > **Test Status Legend:** 🟢 All tests pass | ⚠️ Tests incomplete | 🔴 No tests
 >
@@ -1691,14 +1691,30 @@ Phase 10 is split into 6 sub-phases to enable incremental delivery and clear mil
 
 **Goal:** Enable dual-control evaluation where agents guide users who have separate device/tool access
 **Exit Criteria:** Apps support role-based access, agents can be assigned roles, dual-control tasks can be defined and evaluated with coordination tracking
-**Status:** 🔴 Not Started
+**Status:** 🟡 In Progress (~85% complete)
 **Depends On:** Phase 10f (τ-bench Evaluation), Phase 10a (Backend Core)
 **ADRs:** ADR-020.1
 **UX Wireframes:** `docs/UI-WIREFRAMES-DUAL-CONTROL.md`
+**Test Coverage:** 105 Python tests + 45 UI tests passing
 
 > **Note:** This phase implements τ²-bench (Sierra Research, June 2025) dual-control patterns.
 > Key insight: Agent performance drops ~25 points when guiding users vs acting directly.
 > Enables measuring coordination overhead and communication quality.
+
+### Gap Analysis Summary
+
+| Area | Status | Gap |
+|------|--------|-----|
+| **App Access Control** | 🟢 Complete | Core enums and access checking implemented |
+| **Per-Agent State** | 🟢 Complete | Isolation logic implemented in DynamicApp |
+| **Tool Type Annotations** | 🟢 Complete | READ/WRITE enum and ActionDefinition updated |
+| **Dual-Control Tasks** | 🟢 Complete | DualControlTaskDefinition, InstructionTemplate |
+| **Coordination Tracking** | 🟢 Complete | CoordinationEvent, CoordinationTracker |
+| **API Schemas** | 🟢 Complete | Pydantic schemas for all new types |
+| **Database Migration** | 🟢 Complete | Tables created: dual_control_tasks, coordination_events, solo_dual_comparisons |
+| **API Endpoints** | 🟢 Complete | 12 endpoints: CRUD, events, metrics, comparison (34 API tests passing) |
+| **Example Domain Apps** | 🟢 Complete | Airlines + PayPal (4 apps, 38 app tests passing) |
+| **UI Components** | 🟢 Complete | 9 components implemented (45 UI tests passing)
 
 ### ADR-020.1: Dual-Control Extension
 
@@ -1706,71 +1722,81 @@ Phase 10 is split into 6 sub-phases to enable incremental delivery and clear mil
 
 | Component | Status | File(s) | Verification | Notes |
 |-----------|--------|---------|--------------|-------|
-| AppAccessType enum | 🔴 | `src/agentworld/apps/definition.py` | Import test | SHARED, ROLE_RESTRICTED, PER_AGENT |
-| AppStateType enum | 🔴 | `src/agentworld/apps/definition.py` | Import test | SHARED, PER_AGENT |
-| ToolType enum | 🔴 | `src/agentworld/apps/definition.py` | Import test | READ, WRITE |
-| AgentRole enum | 🔴 | `src/agentworld/core/agent.py` | Import test | PEER, SERVICE_AGENT, CUSTOMER |
-| AppDefinition extensions | 🔴 | `src/agentworld/apps/definition.py` | `pytest tests/apps/` | access_type, allowed_roles, state_type |
-| ActionDefinition.tool_type | 🔴 | `src/agentworld/apps/definition.py` | `pytest tests/apps/` | READ/WRITE annotation |
-| Access checking in execution | 🔴 | `src/agentworld/apps/dynamic.py` | `pytest tests/apps/` | Deny unauthorized access |
-| Per-agent state management | 🔴 | `src/agentworld/apps/dynamic.py` | `pytest tests/apps/` | Isolated state per agent |
+| AppAccessType enum | 🟢 | `src/agentworld/apps/definition.py` | Import test | SHARED, ROLE_RESTRICTED, PER_AGENT |
+| AppStateType enum | 🟢 | `src/agentworld/apps/definition.py` | Import test | SHARED, PER_AGENT |
+| ToolType enum | 🟢 | `src/agentworld/apps/definition.py` | Import test | READ, WRITE |
+| AgentRole enum | 🟢 | `src/agentworld/apps/definition.py` | Import test | PEER, SERVICE_AGENT, CUSTOMER (moved from core) |
+| AppDefinition extensions | 🟢 | `src/agentworld/apps/definition.py` | `pytest tests/apps/` | access_type, allowed_roles, state_type, allowed_role_tags |
+| ActionDefinition.tool_type | 🟢 | `src/agentworld/apps/definition.py` | `pytest tests/apps/` | READ/WRITE annotation |
+| Access checking in execution | 🟢 | `src/agentworld/apps/dynamic.py` | `pytest tests/apps/` | can_agent_access(), check_access() |
+| Per-agent state management | 🟢 | `src/agentworld/apps/dynamic.py` | `pytest tests/apps/` | initialize_with_roles(), state_type handling |
 | DB schema: access columns | 🔴 | `src/agentworld/persistence/models.py` | Migration test | access_type, allowed_roles, state_type |
 
 #### Phase 10h-2: Dual-Control Tasks (Backend)
 
 | Component | Status | File(s) | Verification | Notes |
 |-----------|--------|---------|--------------|-------|
-| DualControlTaskDefinition | 🔴 | `src/agentworld/tasks/definitions.py` | Import test | Agent + user configs |
-| CoordinationHandoff dataclass | 🔴 | `src/agentworld/tasks/definitions.py` | Import test | Expected handoff points |
-| CoordinationEvent dataclass | 🔴 | `src/agentworld/tasks/coordination.py` | Import test | Tracked handoff events |
-| CoordinationMetrics dataclass | 🔴 | `src/agentworld/tasks/coordination.py` | Import test | Success rate, latency, clarity |
-| SoloDualComparison dataclass | 🔴 | `src/agentworld/tasks/definitions.py` | Import test | Mode comparison results |
+| DualControlTaskDefinition | 🟢 | `src/agentworld/tasks/dual_control.py` | Import test | Agent + user configs |
+| InstructionTemplate dataclass | 🟢 | `src/agentworld/tasks/dual_control.py` | Import test | Keyword + semantic matching |
+| CoordinationHandoff dataclass | 🟢 | `src/agentworld/tasks/dual_control.py` | Import test | Expected handoff points |
+| CoordinationEvent dataclass | 🟢 | `src/agentworld/tasks/dual_control.py` | Import test | Tracked handoff events |
+| CoordinationMetrics dataclass | 🟢 | `src/agentworld/tasks/dual_control.py` | Import test | Success rate, latency, clarity |
+| SoloDualComparison dataclass | 🟢 | `src/agentworld/tasks/dual_control.py` | Import test | Mode comparison results |
+| Common instruction templates | 🟢 | `src/agentworld/tasks/dual_control.py` | Import test | TOGGLE_DATA, CHECK_STATUS, etc. |
+| CoordinationTracker | 🟢 | `src/agentworld/tasks/coordination.py` | `pytest tests/tasks/` | Detects & tracks handoffs |
+| analyze_coordination() | 🟢 | `src/agentworld/tasks/coordination.py` | `pytest tests/tasks/` | Aggregated analysis |
+| API schemas | 🟢 | `src/agentworld/api/schemas/dual_control.py` | Import test | Request/response models |
 | DualControlRunner | 🔴 | `src/agentworld/tasks/dual_control.py` | `pytest tests/tasks/` | Executes dual-control tasks |
-| CoordinationTracker | 🔴 | `src/agentworld/tasks/coordination.py` | `pytest tests/tasks/` | Detects & tracks handoffs |
-| DB schema: dual_control_tasks | 🔴 | `src/agentworld/persistence/models.py` | Migration test | New table |
-| DB schema: coordination_events | 🔴 | `src/agentworld/persistence/models.py` | Migration test | New table |
-| DB schema: solo_dual_comparisons | 🔴 | `src/agentworld/persistence/models.py` | Migration test | New table |
+| DB schema: dual_control_tasks | 🟢 | `src/agentworld/persistence/models.py` | `pytest tests/api/test_dual_control.py` | DualControlTaskModel |
+| DB schema: coordination_events | 🟢 | `src/agentworld/persistence/models.py` | `pytest tests/api/test_dual_control.py` | CoordinationEventModel |
+| DB schema: solo_dual_comparisons | 🟢 | `src/agentworld/persistence/models.py` | `pytest tests/api/test_dual_control.py` | SoloDualComparisonModel |
 
-#### Phase 10h-3: Telecom Domain Apps
+#### Phase 10h-3: Example Domain Apps
 
 | Component | Status | File(s) | Verification | Notes |
 |-----------|--------|---------|--------------|-------|
-| Telecom apps init | 🔴 | `src/agentworld/apps/telecom/__init__.py` | Import test | Module setup |
-| TelecomBackendApp | 🔴 | `src/agentworld/apps/telecom/backend.py` | `pytest tests/apps/` | Service agent backend |
-| UserDeviceApp | 🔴 | `src/agentworld/apps/telecom/device.py` | `pytest tests/apps/` | Customer device controls |
-| Telecom task scenarios | 🔴 | `src/agentworld/tasks/scenarios/telecom.py` | `pytest tests/tasks/` | Dual-control tasks |
+| Dual-control apps module | 🟢 | `src/agentworld/apps/evaluation/dual_control_apps.py` | `pytest tests/apps/test_dual_control_apps.py` | 4 apps |
+| Airlines Backend | 🟢 | `src/agentworld/apps/evaluation/dual_control_apps.py` | `pytest tests/apps/test_dual_control_apps.py` | Service agent CRM |
+| Airlines App | 🟢 | `src/agentworld/apps/evaluation/dual_control_apps.py` | `pytest tests/apps/test_dual_control_apps.py` | Customer mobile app |
+| PayPal Backend | 🟢 | `src/agentworld/apps/evaluation/dual_control_apps.py` | `pytest tests/apps/test_dual_control_apps.py` | Service agent console |
+| PayPal App | 🟢 | `src/agentworld/apps/evaluation/dual_control_apps.py` | `pytest tests/apps/test_dual_control_apps.py` | Customer mobile app |
+| Example task scenarios | 🟢 | `src/agentworld/tasks/dual_control_examples.py` | `pytest tests/tasks/test_dual_control.py` | 5 dual-control tasks |
 
 #### Phase 10h-4: API Endpoints
 
 | Component | Status | File(s) | Verification | Notes |
 |-----------|--------|---------|--------------|-------|
-| GET /apps/{id}/access | 🔴 | `src/agentworld/api/routes/app_definitions.py` | `pytest tests/api/` | Get access control |
-| PATCH /apps/{id}/access | 🔴 | `src/agentworld/api/routes/app_definitions.py` | `pytest tests/api/` | Update access control |
-| POST /dual-control-tasks | 🔴 | `src/agentworld/api/routes/dual_control.py` | `pytest tests/api/` | Create task |
-| GET /dual-control-tasks | 🔴 | `src/agentworld/api/routes/dual_control.py` | `pytest tests/api/` | List tasks |
-| GET /dual-control-tasks/{id} | 🔴 | `src/agentworld/api/routes/dual_control.py` | `pytest tests/api/` | Get task |
-| POST /dual-control-tasks/{id}/run | 🔴 | `src/agentworld/api/routes/dual_control.py` | `pytest tests/api/` | Run dual mode |
-| POST /dual-control-tasks/{id}/run-solo | 🔴 | `src/agentworld/api/routes/dual_control.py` | `pytest tests/api/` | Run solo mode |
-| POST /dual-control-tasks/{id}/compare | 🔴 | `src/agentworld/api/routes/dual_control.py` | `pytest tests/api/` | Compare modes |
-| GET /trials/{id}/coordination | 🔴 | `src/agentworld/api/routes/dual_control.py` | `pytest tests/api/` | Get coordination events |
-| Dual-control API schemas | 🔴 | `src/agentworld/api/schemas/dual_control.py` | Import test | Request/response models |
+| POST /dual-control-tasks | 🟢 | `src/agentworld/api/routes/dual_control.py` | `pytest tests/api/test_dual_control.py` | Create task |
+| GET /dual-control-tasks | 🟢 | `src/agentworld/api/routes/dual_control.py` | `pytest tests/api/test_dual_control.py` | List tasks with filtering |
+| GET /dual-control-tasks/{id} | 🟢 | `src/agentworld/api/routes/dual_control.py` | `pytest tests/api/test_dual_control.py` | Get task |
+| PATCH /dual-control-tasks/{id} | 🟢 | `src/agentworld/api/routes/dual_control.py` | `pytest tests/api/test_dual_control.py` | Update task |
+| DELETE /dual-control-tasks/{id} | 🟢 | `src/agentworld/api/routes/dual_control.py` | `pytest tests/api/test_dual_control.py` | Soft/hard delete |
+| GET /dual-control-tasks/stats | 🟢 | `src/agentworld/api/routes/dual_control.py` | `pytest tests/api/test_dual_control.py` | System statistics |
+| GET /dual-control-tasks/domains/list | 🟢 | `src/agentworld/api/routes/dual_control.py` | `pytest tests/api/test_dual_control.py` | List unique domains |
+| POST /dual-control-tasks/{id}/events | 🟢 | `src/agentworld/api/routes/dual_control.py` | `pytest tests/api/test_dual_control.py` | Record coordination event |
+| GET /dual-control-tasks/{id}/events | 🟢 | `src/agentworld/api/routes/dual_control.py` | `pytest tests/api/test_dual_control.py` | List events |
+| GET /dual-control-tasks/{id}/metrics | 🟢 | `src/agentworld/api/routes/dual_control.py` | `pytest tests/api/test_dual_control.py` | Get coordination metrics |
+| POST /dual-control-tasks/{id}/compare | 🟢 | `src/agentworld/api/routes/dual_control.py` | `pytest tests/api/test_dual_control.py` | Run comparison |
+| GET /dual-control-tasks/{id}/comparison | 🟢 | `src/agentworld/api/routes/dual_control.py` | `pytest tests/api/test_dual_control.py` | Get comparison results |
+| Dual-control API schemas | 🟢 | `src/agentworld/api/schemas/dual_control.py` | Import test | Request/response models |
 
 #### Phase 10h-5: UI - App Access Control
 
 | Component | Status | File(s) | Verification | Notes |
 |-----------|--------|---------|--------------|-------|
-| AccessTypeSelector | 🔴 | `web/src/components/app-studio/access/AccessTypeSelector.tsx` | Manual test | Radio group |
-| RoleCheckboxes | 🔴 | `web/src/components/app-studio/access/RoleCheckboxes.tsx` | Manual test | Role selection |
-| StateTypeSelector | 🔴 | `web/src/components/app-studio/access/StateTypeSelector.tsx` | Manual test | State type toggle |
-| InfoStep updates | 🔴 | `web/src/components/app-studio/steps/InfoStep.tsx` | Manual test | Add access section |
-| ToolTypeBadge | 🔴 | `web/src/components/app-studio/ToolTypeBadge.tsx` | Manual test | READ/WRITE badge |
-| ActionCard updates | 🔴 | `web/src/components/app-studio/ActionCard.tsx` | Manual test | Tool type dropdown |
+| AccessTypeSelector | 🟢 | `web/src/components/app-studio/access/AccessTypeSelector.tsx` | `npm test -- dual-control` | Radio group |
+| RoleCheckboxes | 🟢 | `web/src/components/app-studio/access/RoleCheckboxes.tsx` | `npm test -- dual-control` | Role selection |
+| StateTypeSelector | 🟢 | `web/src/components/app-studio/access/StateTypeSelector.tsx` | `npm test -- dual-control` | State type toggle with gating |
+| InfoStep updates | 🟢 | `web/src/components/app-studio/wizard/InfoStep.tsx` | `npm test -- dual-control` | Add access section |
+| ToolTypeBadge | 🟢 | `web/src/components/app-studio/ToolTypeBadge.tsx` | `npm test -- dual-control` | READ/WRITE badge + selector |
+| ActionsStep updates | 🟢 | `web/src/components/app-studio/wizard/ActionsStep.tsx` | `npm test -- dual-control` | Tool type integration |
 
 #### Phase 10h-6: UI - Simulation Role Assignment
 
 | Component | Status | File(s) | Verification | Notes |
 |-----------|--------|---------|--------------|-------|
-| RoleSelector | 🔴 | `web/src/components/simulation/roles/RoleSelector.tsx` | Manual test | Role dropdown |
+| RoleSelector | 🟢 | `web/src/components/simulation/roles/RoleSelector.tsx` | `npm test -- dual-control` | Role dropdown with 3 options |
+| RoleBadge | 🟢 | `web/src/components/simulation/roles/RoleSelector.tsx` | `npm test -- dual-control` | Badge with size variants |
 | RoleAppFilter | 🔴 | `web/src/components/simulation/roles/RoleAppFilter.tsx` | Manual test | Filter apps by role |
 | AgentConfig updates | 🔴 | `web/src/components/simulation/AgentConfig.tsx` | Manual test | Add role dropdown |
 | AppsSection updates | 🔴 | `web/src/components/simulation/AppsSection.tsx` | Manual test | Group by access type |
@@ -1779,8 +1805,10 @@ Phase 10 is split into 6 sub-phases to enable incremental delivery and clear mil
 
 | Component | Status | File(s) | Verification | Notes |
 |-----------|--------|---------|--------------|-------|
-| CoordinationMarker | 🔴 | `web/src/components/simulation/timeline/CoordinationMarker.tsx` | Manual test | Handoff event marker |
-| CoordinationPanel | 🔴 | `web/src/components/simulation/timeline/CoordinationPanel.tsx` | Manual test | Metrics sidebar |
+| CoordinationMarker | 🟢 | `web/src/components/simulation/timeline/CoordinationMarker.tsx` | `npm test -- dual-control` | Handoff event marker (3 states) |
+| CoordinationMarkerCompact | 🟢 | `web/src/components/simulation/timeline/CoordinationMarker.tsx` | `npm test -- dual-control` | Compact inline badge |
+| CoordinationPanel | 🟢 | `web/src/components/simulation/timeline/CoordinationPanel.tsx` | `npm test -- dual-control` | Metrics sidebar |
+| CoordinationSummary | 🟢 | `web/src/components/simulation/timeline/CoordinationPanel.tsx` | `npm test -- dual-control` | Compact summary |
 | TimelineEvent updates | 🔴 | `web/src/components/simulation/timeline/TimelineEvent.tsx` | Manual test | Coordination styling |
 
 #### Phase 10h-8: UI - Task Definition & Results
@@ -2345,6 +2373,7 @@ if __name__ == "__main__":
 | 2026-01-28 | 10f/10g | **Implementation Review** - Thorough code review revealed gaps: **ADR-020 (~90%)**: Missing checkpoints, retry execution, test suite. **ADR-021 (~60%)**: Missing agent_eval.py (REQ-21-03), regression.py (REQ-21-05), coverage.py (REQ-21-06), 2 API endpoints, test suite. Status corrected from 🟢 to 🟡 | Claude |
 | 2026-01-28 | - | Auto-tracked: ADR-009, ADR-011, ADR-012 (5 files modified) | Hook |
 | 2026-01-28 | 10g | **ADR-021 COMPLETE** - Implemented missing components: agent_eval.py (REQ-21-03: EvaluationTask, ActionRecord, ErrorPattern, AgentEvaluation, classify_error, analyze_error_patterns, calculate_efficiency, evaluate_comprehension, PAYMENT_EVALUATION_TASKS), regression.py (REQ-21-05: RegressionReport, OutputDiff, TestDelta, PerformanceDelta, detect_regressions, is_safe_to_deploy, format_regression_report), coverage.py (REQ-21-06: CoverageReport, BranchInfo, ExecutionTrace, ControlFlowGraph, analyze_coverage, build_control_flow_graph), API endpoints (GET /coverage, GET /compare/{version}), updated __init__.py exports. All unit tests pass. Phase 10g now 🟢 | Claude |
+| 2026-01-28 | 10h | **ADR-020.1 Tier 1 Implementation (~40%)** - Implemented core dual-control backend: (1) definition.py: AppAccessType, AppStateType, ToolType, AgentRole enums; AppDefinition extended with access_type, allowed_roles, allowed_role_tags, state_type; ActionDefinition.tool_type; can_agent_access() method; (2) dynamic.py: set_agent_role(), get_agent_role(), can_agent_access(), check_access() methods; access control in _execute_action(); per-agent state handling in _initialize_state(); initialize_with_roles(); (3) dual_control.py: InstructionTemplate, CoordinationHandoff, DualControlTaskDefinition, CoordinationEvent, CoordinationMetrics, SoloDualComparison; common templates (TOGGLE_DATA, CHECK_STATUS, etc.); (4) coordination.py: PendingInstruction, CoordinationTracker, analyze_coordination(); (5) API schemas: dual_control.py with Pydantic models. ADRs updated: ADR-019 (JSON↔Python mapping, access control section), ADR-020 (agent ID immutability constraint). Remaining: DB migration, API endpoints, telecom domain apps, UI components | Claude |
 
 ---
 

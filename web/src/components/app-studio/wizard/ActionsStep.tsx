@@ -4,6 +4,7 @@ import { Button, Badge, Card, Input, Textarea, Label } from '@/components/ui'
 import { cn } from '@/lib/utils'
 import type { ActionDefinition, ParamSpec } from '@/lib/api'
 import { LogicCanvas, type LogicBlock } from '../logic-builder'
+import { ToolTypeBadge, ToolTypeSelector, type ToolType } from '../ToolTypeBadge'
 
 interface ActionsStepProps {
   actions: ActionDefinition[]
@@ -72,6 +73,7 @@ function ActionCard({
               <code className="font-mono text-sm font-semibold text-primary">
                 {action.name}
               </code>
+              <ToolTypeBadge toolType={(action as ActionDefinition & { toolType?: ToolType }).toolType || 'write'} />
               {hasLogic && (
                 <Badge variant="outline" className="text-xs">
                   Has logic
@@ -170,6 +172,9 @@ interface ActionBuilderModalProps {
 function ActionBuilderModal({ action, onSave, onClose }: ActionBuilderModalProps) {
   const [name, setName] = useState(action?.name || '')
   const [description, setDescription] = useState(action?.description || '')
+  const [toolType, setToolType] = useState<ToolType>(
+    (action as ActionDefinition & { toolType?: ToolType })?.toolType || 'write'
+  )
   const [parameters, setParameters] = useState<Record<string, ParamSpec>>(
     action?.parameters || {}
   )
@@ -215,7 +220,9 @@ function ActionBuilderModal({ action, onSave, onClose }: ActionBuilderModalProps
       returns: action?.returns || {},
       // Cast to api LogicBlock type (same structure, just different type declaration)
       logic: filteredLogic as unknown as import('@/lib/api').LogicBlock[],
-    })
+      // ADR-020.1: Include tool type
+      toolType,
+    } as ActionDefinition & { toolType: ToolType })
   }
 
   return (
@@ -253,6 +260,12 @@ function ActionBuilderModal({ action, onSave, onClose }: ActionBuilderModalProps
               rows={2}
             />
           </div>
+
+          {/* Tool Type (ADR-020.1) */}
+          <ToolTypeSelector
+            value={toolType}
+            onChange={setToolType}
+          />
 
           {/* Parameters */}
           <div className="space-y-4">
