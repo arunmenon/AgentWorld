@@ -1,11 +1,12 @@
 import { AlertCircle } from 'lucide-react'
 import { Input, Textarea, Label } from '@/components/ui'
 import { cn } from '@/lib/utils'
-import type { AppCategory } from '@/lib/api'
+import type { AppCategory, StateField } from '@/lib/api'
 import {
   AccessTypeSelector,
   RoleCheckboxes,
   StateTypeSelector,
+  StateSchemaEditor,
   type AccessType,
   type AgentRole,
   type StateType,
@@ -21,6 +22,8 @@ interface AppInfoData {
   access_type?: AccessType
   allowed_roles?: AgentRole[]
   state_type?: StateType
+  // State schema (τ²-bench Phase 1)
+  state_schema?: StateField[]
 }
 
 interface ValidationErrors {
@@ -241,6 +244,23 @@ export function InfoStep({
           />
         )}
       </div>
+
+      {/* State Schema Section (τ²-bench Phase 1) */}
+      {data.state_schema && data.state_schema.length > 0 && (
+        <div className="space-y-4 pt-4 border-t border-border">
+          <div className="text-center">
+            <h3 className="text-lg font-medium mb-1">State Schema</h3>
+            <p className="text-sm text-foreground-secondary">
+              Configure state fields and their visibility to user agents
+            </p>
+          </div>
+
+          <StateSchemaEditor
+            fields={data.state_schema}
+            onChange={(state_schema) => onChange({ state_schema })}
+          />
+        </div>
+      )}
     </div>
   )
 }

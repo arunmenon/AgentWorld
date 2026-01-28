@@ -12,3 +12,5 @@ export type { AgentRole } from './RoleCheckboxes'
 
 export { StateTypeSelector } from './StateTypeSelector'
 export type { StateType } from './StateTypeSelector'
+
+export { StateSchemaEditor } from './StateSchemaEditor'

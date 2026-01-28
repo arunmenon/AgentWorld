@@ -77,8 +77,10 @@ export const appTemplates: AppTemplate[] = [
       },
     ],
     state_schema: [
-      { name: 'balance', type: 'number', default: 1000, per_agent: true, description: 'Account balance' },
-      { name: 'transactions', type: 'array', default: [], per_agent: true, description: 'Transaction history' },
+      { name: 'balance', type: 'number', default: 1000, per_agent: true, description: 'Account balance', observable: true },
+      { name: 'transactions', type: 'array', default: [], per_agent: true, description: 'Transaction history', observable: true },
+      { name: 'fraud_score', type: 'number', default: 0, per_agent: true, description: 'Internal fraud risk score (0-100)', observable: false },
+      { name: 'account_flags', type: 'array', default: [], per_agent: true, description: 'Internal account flags', observable: false },
     ],
     initial_config: {
       initial_balance: 1000,
@@ -153,10 +155,11 @@ export const appTemplates: AppTemplate[] = [
       },
     ],
     state_schema: [
-      { name: 'cart', type: 'array', default: [], per_agent: true, description: 'Shopping cart items' },
-      { name: 'cart_total', type: 'number', default: 0, per_agent: true, description: 'Cart total price' },
-      { name: 'orders', type: 'array', default: [], per_agent: true, description: 'Order history' },
-      { name: 'products', type: 'array', default: [], per_agent: false, description: 'Available products' },
+      { name: 'cart', type: 'array', default: [], per_agent: true, description: 'Shopping cart items', observable: true },
+      { name: 'cart_total', type: 'number', default: 0, per_agent: true, description: 'Cart total price', observable: true },
+      { name: 'orders', type: 'array', default: [], per_agent: true, description: 'Order history', observable: true },
+      { name: 'products', type: 'array', default: [], per_agent: false, description: 'Available products', observable: true },
+      { name: 'customer_tier', type: 'string', default: 'standard', per_agent: true, description: 'Internal customer tier', observable: false },
     ],
     initial_config: {
       currency: 'USD',

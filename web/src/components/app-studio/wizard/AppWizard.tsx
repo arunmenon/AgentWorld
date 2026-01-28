@@ -356,6 +356,7 @@ export function AppWizard({ existingApp }: AppWizardProps) {
               description: state.description,
               category: state.category,
               icon: state.icon,
+              state_schema: state.state_schema,
             }}
             onChange={handleInfoChange}
             errors={errors}
