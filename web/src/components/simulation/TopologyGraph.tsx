@@ -88,6 +88,48 @@ export const TopologyGraph = memo(function TopologyGraph({
   // Determine if we should show labels for all nodes or only on hover
   const showAllLabels = agents.length <= LABEL_THRESHOLD
 
+  // Calculate dynamic node size based on agent count and container size
+  // This ensures nodes always fit properly regardless of how many agents there are
+  const nodeConfig = useMemo(() => {
+    const agentCount = agents.length
+    const containerArea = width * height
+    const minDimension = Math.min(width, height)
+
+    // Base radius scales inversely with agent count
+    // For 1-2 agents: smaller nodes (they'd otherwise dominate)
+    // For 3-10 agents: medium nodes
+    // For 10+ agents: even smaller nodes
+    let baseRadius: number
+    let maxRadius: number
+
+    if (agentCount <= 2) {
+      // Very few agents - use small fixed size to prevent dominating the view
+      baseRadius = 4
+      maxRadius = 6
+    } else if (agentCount <= 5) {
+      baseRadius = 3.5
+      maxRadius = 5
+    } else if (agentCount <= 10) {
+      baseRadius = 3
+      maxRadius = 4.5
+    } else if (agentCount <= 20) {
+      baseRadius = 2.5
+      maxRadius = 4
+    } else {
+      // Many agents - very small nodes
+      baseRadius = 2
+      maxRadius = 3
+    }
+
+    // Font size also scales with agent count
+    const fontSize = agentCount <= 5 ? 9 : agentCount <= 15 ? 7 : 5
+
+    // Padding for zoomToFit - much larger padding for fewer agents to prevent nodes at edges
+    const zoomPadding = agentCount <= 2 ? 120 : agentCount <= 5 ? 80 : agentCount <= 10 ? 50 : 30
+
+    return { baseRadius, maxRadius, fontSize, zoomPadding }
+  }, [agents.length, width, height])
+
   // Calculate message counts per agent
   const agentMessageCounts = useMemo(() => {
     const agentCounts = new Map<string, number>()
@@ -151,10 +193,11 @@ export const TopologyGraph = memo(function TopologyGraph({
       }
 
       const label = node.name
-      const fontSize = 9 / globalScale
-      // Much smaller node sizes to fit properly in container
-      const baseRadius = Math.max(3, Math.min(6, 3 + node.messageCount / 5))
-      const nodeRadius = (node.isSelected || node.isHovered) ? baseRadius * 1.1 : baseRadius
+      const fontSize = nodeConfig.fontSize / globalScale
+      // Dynamic node size based on agent count (from nodeConfig) plus activity bonus
+      const activityBonus = Math.min(node.messageCount / 10, nodeConfig.maxRadius - nodeConfig.baseRadius)
+      const baseRadius = nodeConfig.baseRadius + activityBonus
+      const nodeRadius = (node.isSelected || node.isHovered) ? baseRadius * 1.15 : baseRadius
 
       // Determine if we should show the label for this node
       const shouldShowLabel = showAllLabels || node.isSelected || node.isHovered
@@ -263,7 +306,7 @@ export const TopologyGraph = memo(function TopologyGraph({
         ctx.fillText(String(node.messageCount), badgeX, badgeY)
       }
     },
-    [showAllLabels]
+    [showAllLabels, nodeConfig]
   )
 
   // Link rendering
@@ -313,14 +356,35 @@ export const TopologyGraph = memo(function TopologyGraph({
     []
   )
 
-  // Center graph on mount
+  // Configure d3 forces when graph mounts
   useEffect(() => {
     if (graphRef.current) {
-      setTimeout(() => {
-        graphRef.current?.zoomToFit(400)
-      }, 500)
+      // Increase charge force to push nodes apart but keep them centered
+      graphRef.current.d3Force('charge')?.strength(-100)
+      // Add center force to keep graph centered
+      graphRef.current.d3Force('center')?.strength(0.1)
+      // Reduce link distance to keep connected nodes closer
+      graphRef.current.d3Force('link')?.distance(50)
     }
-  }, [agents.length])
+  }, [])
+
+  // Center graph on mount and when agent count changes
+  useEffect(() => {
+    if (graphRef.current) {
+      // Initial fit with padding
+      setTimeout(() => {
+        graphRef.current?.zoomToFit(400, nodeConfig.zoomPadding)
+      }, 300)
+      // Second fit after simulation settles more
+      setTimeout(() => {
+        graphRef.current?.zoomToFit(200, nodeConfig.zoomPadding)
+      }, 800)
+      // Final fit
+      setTimeout(() => {
+        graphRef.current?.zoomToFit(100, nodeConfig.zoomPadding)
+      }, 1500)
+    }
+  }, [agents.length, nodeConfig.zoomPadding])
 
   if (agents.length === 0) {
     return (
@@ -350,15 +414,17 @@ export const TopologyGraph = memo(function TopologyGraph({
         linkCanvasObject={linkCanvasObject}
         onNodeClick={handleNodeClick}
         onNodeHover={handleNodeHover}
-        nodeRelSize={4}
+        nodeRelSize={2}
         linkDirectionalParticles={1}
         linkDirectionalParticleWidth={1}
         linkDirectionalParticleSpeed={0.005}
         cooldownTicks={100}
-        onEngineStop={() => graphRef.current?.zoomToFit(200)}
+        onEngineStop={() => graphRef.current?.zoomToFit(200, nodeConfig.zoomPadding)}
         enableNodeDrag={true}
         enableZoomInteraction={true}
         enablePanInteraction={true}
+        minZoom={0.5}
+        maxZoom={8}
         backgroundColor="transparent"
       />
     </div>
