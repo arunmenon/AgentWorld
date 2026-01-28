@@ -9,6 +9,7 @@ import Personas from './pages/Personas'
 import Apps from './pages/Apps'
 import AppCreate from './pages/AppCreate'
 import AppEdit from './pages/AppEdit'
+import TaskCreate from './pages/TaskCreate'
 import Settings from './pages/Settings'
 import NotFound from './pages/NotFound'
 
@@ -25,6 +26,7 @@ function App() {
           <Route path="/apps" element={<Apps />} />
           <Route path="/apps/new" element={<AppCreate />} />
           <Route path="/apps/:id" element={<AppEdit />} />
+          <Route path="/tasks/new" element={<TaskCreate />} />
           <Route path="/settings" element={<Settings />} />
           <Route path="*" element={<NotFound />} />
         </Routes>
