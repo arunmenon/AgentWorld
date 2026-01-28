@@ -4,11 +4,6 @@
 
 ---
 
-> **Note on Screenshots**: This document references screenshot placeholders in the `docs/images/` directory. To capture actual screenshots:
-> 1. Start the backend: `python -m src.agentworld.api.app`
-> 2. Start the frontend: `cd web && npm run dev`
-> 3. Navigate to each page and capture screenshots with the specified filenames
-
 ---
 
 ## Table of Contents
@@ -150,9 +145,9 @@ agents:
     background: "Software engineer with 10 years experience"
 ```
 
-<!-- Screenshot: Agent Inspector Panel showing Big Five personality radar chart -->
-<!-- Capture from: /simulations/{id} - Agent inspector sidebar -->
-<!-- Filename: images/agentworld-simulation-agent-inspector.png -->
+![Agent Inspector with Personality Radar Chart](images/agentworld-simulation-agent-inspector.png)
+
+*Agent inspector panel showing Big Five personality traits as a radar chart with trait percentages*
 
 #### Memory Architecture (ADR-006)
 
@@ -190,9 +185,9 @@ Five pre-built topology types for modeling communication constraints:
 | **Small-World** | Clustered with shortcuts | Social networks, viral spread |
 | **Scale-Free** | Power-law degree distribution | Influencer networks, markets |
 
-<!-- Screenshot: Force-directed network topology graph (D3.js) -->
-<!-- Capture from: /simulations/{id} - Main visualization area -->
-<!-- Filename: images/agentworld-simulation-topology.png -->
+![Topology Visualization](images/agentworld-simulation-topology.png)
+
+*Force-directed network topology showing agents and their communication connections*
 
 **NetworkX Integration:**
 - `get_neighbors(agent)`: Returns agents an agent can communicate with
@@ -302,22 +297,26 @@ No-code app builder with 4-step wizard:
 3. **Actions Step**: Define operations and parameters
 4. **Logic Step**: Visual logic builder with drag-and-drop
 
-<!-- Screenshot: App Studio 4-step creation wizard -->
-<!-- Capture from: /apps/create - All 4 steps (Info, State, Actions, Logic) -->
-<!-- Filename: images/agentworld-appstudio-wizard.png -->
+![App Studio Wizard](images/agentworld-appstudio-wizard.png)
 
-<!-- Screenshot: Visual Logic Builder with drag-and-drop directives -->
-<!-- Capture from: /apps/create - Logic step with visual builder canvas -->
-<!-- Filename: images/agentworld-appstudio-logic-builder.png -->
+*4-step creation wizard with template selection (Payment, Shopping, Email, Calendar, Messaging, Blank)*
+
+![Actions Step](images/agentworld-appstudio-actions.png)
+
+*Actions configuration showing defined operations with parameters and logic indicators*
+
+![Logic Builder](images/agentworld-appstudio-logic-builder.png)
+
+*Expanded action view showing parameters, types, and logic flow (validate → update → notify → return)*
 
 **Test Sandbox:**
 - Execute actions against simulated state
 - State snapshots before/after
 - Debug mode with step-through
 
-<!-- Screenshot: Test Sandbox with state inspection -->
-<!-- Capture from: /apps/{id}/test - Sandbox execution view -->
-<!-- Filename: images/agentworld-appstudio-sandbox.png -->
+![Test Sandbox](images/agentworld-appstudio-sandbox.png)
+
+*Test sandbox with agent selection, action execution, and real-time state monitoring*
 
 ---
 
@@ -351,9 +350,7 @@ This metric captures:
 3. Compare actual vs expected state
 4. Compute pass^k with confidence intervals
 
-<!-- Screenshot: Pass^k Evaluation Dashboard with metrics charts -->
-<!-- Capture from: /evaluations - Task evaluation results page -->
-<!-- Filename: images/agentworld-evaluation-passk.png -->
+*Note: The evaluation panel is accessible from the simulation detail page, showing evaluator options (Persona Adherence, Coherence, Relevance, Consistency, Length Check, Keyword Filter) with run and filter controls.*
 
 #### State Verification
 
@@ -420,9 +417,7 @@ policies:
 | **Documentation** | 15% | Descriptions, examples, usage notes |
 | **Reusability** | 15% | Modular design, parameterization |
 
-<!-- Screenshot: 6-dimension Quality Scoring Radar Chart -->
-<!-- Capture from: /apps/{id} - Quality assessment panel -->
-<!-- Filename: images/agentworld-evaluation-quality.png -->
+*Note: Quality scoring provides 6-dimension assessment accessible via the app evaluation API.*
 
 ---
 
@@ -535,9 +530,9 @@ inject_agent(
 
 #### Main Dashboard
 
-<!-- Screenshot: Main Dashboard with recent simulations and quick actions -->
-<!-- Capture from: /dashboard - Full page overview -->
-<!-- Filename: images/agentworld-dashboard-overview.png -->
+![Dashboard Overview](images/agentworld-dashboard-overview.png)
+
+*Main dashboard showing total simulations, agents, messages, cost metrics, and recent simulation list*
 
 **Features:**
 - Recent simulations with status
@@ -547,9 +542,9 @@ inject_agent(
 
 #### Simulation Detail Page
 
-<!-- Screenshot: Simulation Detail with topology, conversation, and metrics -->
-<!-- Capture from: /simulations/{id} - Full page with all panels -->
-<!-- Filename: images/agentworld-simulation-detail.png -->
+![Simulation Detail](images/agentworld-simulation-detail.png)
+
+*Simulation detail view with controls, agent topology, conversation stream, export options, and evaluation panel*
 
 **Components:**
 - Force-directed topology graph (D3.js)
