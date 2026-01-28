@@ -103,29 +103,29 @@ export const TopologyGraph = memo(function TopologyGraph({
     let maxRadius: number
 
     if (agentCount <= 2) {
-      // Very few agents - use small fixed size to prevent dominating the view
+      // Few agents - medium size, clearly visible but not overwhelming
+      baseRadius = 6
+      maxRadius = 8
+    } else if (agentCount <= 5) {
+      baseRadius = 5
+      maxRadius = 7
+    } else if (agentCount <= 10) {
       baseRadius = 4
       maxRadius = 6
-    } else if (agentCount <= 5) {
-      baseRadius = 3.5
-      maxRadius = 5
-    } else if (agentCount <= 10) {
-      baseRadius = 3
-      maxRadius = 4.5
     } else if (agentCount <= 20) {
+      baseRadius = 3
+      maxRadius = 5
+    } else {
+      // Many agents - smaller nodes to fit
       baseRadius = 2.5
       maxRadius = 4
-    } else {
-      // Many agents - very small nodes
-      baseRadius = 2
-      maxRadius = 3
     }
 
-    // Font size also scales with agent count
-    const fontSize = agentCount <= 5 ? 9 : agentCount <= 15 ? 7 : 5
+    // Font size scales with agent count
+    const fontSize = agentCount <= 5 ? 10 : agentCount <= 15 ? 8 : 6
 
-    // Padding for zoomToFit - much larger padding for fewer agents to prevent nodes at edges
-    const zoomPadding = agentCount <= 2 ? 120 : agentCount <= 5 ? 80 : agentCount <= 10 ? 50 : 30
+    // Padding for zoomToFit - balanced padding to keep nodes visible but contained
+    const zoomPadding = agentCount <= 2 ? 50 : agentCount <= 5 ? 40 : agentCount <= 10 ? 30 : 20
 
     return { baseRadius, maxRadius, fontSize, zoomPadding }
   }, [agents.length, width, height])
