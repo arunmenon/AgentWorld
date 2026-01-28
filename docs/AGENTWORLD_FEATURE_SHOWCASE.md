@@ -185,7 +185,7 @@ Five pre-built topology types for modeling communication constraints:
 | **Small-World** | Clustered with shortcuts | Social networks, viral spread |
 | **Scale-Free** | Power-law degree distribution | Influencer networks, markets |
 
-![Topology Visualization](images/agentworld-simulation-topology.png)
+![Topology Visualization](images/agentworld-simulation-topology.png?v=2)
 
 *Force-directed network topology showing agents and their communication connections*
 
