@@ -577,7 +577,7 @@ inject_agent(
 
 #### Simulation Detail Page
 
-![Simulation Detail](images/agentworld-simulation-detail.png)
+![Simulation Detail](images/agentworld-simulation-detail.png?v=2)
 
 *Simulation detail view with controls, agent topology, conversation stream, export options, and evaluation panel*
 
