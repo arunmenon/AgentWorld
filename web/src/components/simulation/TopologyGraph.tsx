@@ -356,15 +356,15 @@ export const TopologyGraph = memo(function TopologyGraph({
     []
   )
 
-  // Configure d3 forces when graph mounts
+  // Configure d3 forces when graph mounts - keep nodes closer together
   useEffect(() => {
     if (graphRef.current) {
-      // Increase charge force to push nodes apart but keep them centered
-      graphRef.current.d3Force('charge')?.strength(-100)
-      // Add center force to keep graph centered
-      graphRef.current.d3Force('center')?.strength(0.1)
-      // Reduce link distance to keep connected nodes closer
-      graphRef.current.d3Force('link')?.distance(50)
+      // Reduce charge force significantly - less repulsion keeps nodes closer
+      graphRef.current.d3Force('charge')?.strength(-30)
+      // Strong center force to pull everything to center
+      graphRef.current.d3Force('center')?.strength(0.5)
+      // Short link distance to keep connected nodes very close
+      graphRef.current.d3Force('link')?.distance(20)
     }
   }, [])
 
