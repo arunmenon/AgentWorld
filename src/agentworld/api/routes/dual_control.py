@@ -29,6 +29,8 @@ from agentworld.api.schemas.dual_control import (
     SoloDualComparisonSchema,
     RunComparisonRequest,
     RunComparisonResponse,
+    GenerateTaskRequest,
+    GenerateTaskResponse,
 )
 from agentworld.persistence.models import (
     DualControlTaskModel,
@@ -155,6 +157,56 @@ async def list_dual_control_tasks(
 # =============================================================================
 # Static Routes (must be before /{task_id} to avoid matching)
 # =============================================================================
+
+
+@router.post("/generate", response_model=GenerateTaskResponse)
+async def generate_task(
+    request: GenerateTaskRequest,
+) -> GenerateTaskResponse:
+    """Generate a task definition from natural language.
+
+    Uses an LLM to interpret the natural language description and generate
+    a complete dual-control task definition that can be reviewed and modified.
+    """
+    from agentworld.tasks.ai_generator import AITaskGenerator
+
+    try:
+        # Convert available apps to dict format for generator
+        available_apps = None
+        if request.available_apps:
+            available_apps = [
+                {
+                    "app_id": app.app_id,
+                    "name": app.name,
+                    "actions": [{"name": a.name, "description": a.description} for a in app.actions],
+                }
+                for app in request.available_apps
+            ]
+
+        generator = AITaskGenerator()
+        task_data = await generator.generate_task(
+            description=request.description,
+            domain_hint=request.domain_hint,
+            available_apps=available_apps,
+        )
+        return GenerateTaskResponse(
+            success=True,
+            task=task_data,
+        )
+    except ValueError as e:
+        logger.warning(f"Task generation failed: {e}")
+        return GenerateTaskResponse(
+            success=False,
+            task={},
+            error=str(e),
+        )
+    except Exception as e:
+        logger.error(f"Unexpected error during task generation: {e}")
+        return GenerateTaskResponse(
+            success=False,
+            task={},
+            error="Failed to generate task. Please try again with a clearer description.",
+        )
 
 
 @router.get("/domains/list")

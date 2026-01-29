@@ -337,3 +337,56 @@ class RunComparisonResponse(BaseModel):
     insight: str = Field(
         "", description="Key insight about the performance difference"
     )
+
+
+# ==============================================================================
+# AI Generation Schemas
+# ==============================================================================
+
+
+class AppActionSchema(BaseModel):
+    """Schema for an app action (for AI generation context)."""
+
+    name: str = Field(..., description="Action name")
+    description: str = Field("", description="Action description")
+
+
+class AvailableAppSchema(BaseModel):
+    """Schema for available app (for AI generation context)."""
+
+    app_id: str = Field(..., description="App identifier")
+    name: str = Field(..., description="App display name")
+    actions: list[AppActionSchema] = Field(
+        default_factory=list,
+        description="Available actions for this app"
+    )
+
+
+class GenerateTaskRequest(BaseModel):
+    """Request to generate a task from natural language."""
+
+    description: str = Field(
+        ...,
+        min_length=10,
+        max_length=2000,
+        description="Natural language description of the task scenario"
+    )
+    domain_hint: str | None = Field(
+        None,
+        description="Optional domain hint (e.g., 'paypal', 'emirates', 'banking')"
+    )
+    available_apps: list[AvailableAppSchema] | None = Field(
+        None,
+        description="Available apps and their actions for the AI to recommend from"
+    )
+
+
+class GenerateTaskResponse(BaseModel):
+    """Response containing generated task definition."""
+
+    success: bool = Field(..., description="Whether generation succeeded")
+    task: dict[str, Any] = Field(
+        default_factory=dict,
+        description="Generated task definition"
+    )
+    error: str | None = Field(None, description="Error message if failed")
