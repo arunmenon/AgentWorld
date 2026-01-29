@@ -1088,4 +1088,61 @@ export const api = {
       body: { num_trials: numTrials },
     })
   },
+
+  // ==========================================================================
+  // AI Generation
+  // ==========================================================================
+
+  /** Generate a dual-control task from natural language description */
+  generateTask: async (data: {
+    description: string
+    domain_hint?: string
+    available_apps?: Array<{
+      app_id: string
+      name: string
+      actions: Array<{ name: string; description: string }>
+    }>
+  }) => {
+    return request<{
+      success: boolean
+      task: Record<string, unknown>
+      error?: string
+    }>('/dual-control-tasks/generate', {
+      method: 'POST',
+      body: data,
+    })
+  },
+
+  /** Generate a simulation configuration from natural language description */
+  generateSimulation: async (data: {
+    description: string
+    num_agents?: number
+  }) => {
+    return request<{
+      success: boolean
+      config: {
+        name: string
+        description: string
+        initial_prompt: string
+        steps: number
+        agents: Array<{
+          name: string
+          role: AgentRole
+          background: string
+          traits: {
+            openness: number
+            conscientiousness: number
+            extraversion: number
+            agreeableness: number
+            neuroticism: number
+          }
+        }>
+        apps: Array<{ app_id: string; config?: Record<string, unknown> }>
+      }
+      error?: string
+    }>('/simulations/generate', {
+      method: 'POST',
+      body: data,
+    })
+  },
 }

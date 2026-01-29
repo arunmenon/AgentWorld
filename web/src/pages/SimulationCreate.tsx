@@ -17,6 +17,8 @@ import {
   Target,
   X,
   ClipboardList,
+  Loader2,
+  Wand2,
 } from 'lucide-react'
 import {
   Card,
@@ -137,6 +139,13 @@ export default function SimulationCreate() {
   const [showTaskPicker, setShowTaskPicker] = useState(false)
   const [terminationMode, setTerminationMode] = useState<'max_steps' | 'goal' | 'hybrid'>('max_steps')
 
+  // AI Generation state
+  const [showAiGenerator, setShowAiGenerator] = useState(false)
+  const [aiDescription, setAiDescription] = useState('')
+  const [aiNumAgents, setAiNumAgents] = useState<number | undefined>(undefined)
+  const [isGenerating, setIsGenerating] = useState(false)
+  const [generateError, setGenerateError] = useState<string | null>(null)
+
   // Apply a template to the form
   const applyTemplate = (template: SimulationTemplate) => {
     setName(template.name)
@@ -175,7 +184,11 @@ export default function SimulationCreate() {
   const applyTask = (task: DualControlTaskDefinition) => {
     setName(`${task.name} - Trial`)
     setSteps(task.max_turns)
-    setInitialPrompt(task.description)
+    // Priority for initial prompt:
+    // 1. Task's simulation_config.scenario_prompt (if explicitly defined)
+    // 2. Fallback to agent_instruction (describes what the scenario is about)
+    const scenarioPrompt = (task.simulation_config as Record<string, unknown>)?.scenario_prompt as string | undefined
+    setInitialPrompt(scenarioPrompt || task.agent_instruction)
 
     // Set up agents based on task roles
     const taskAgents: AgentConfig[] = [
@@ -214,6 +227,62 @@ export default function SimulationCreate() {
   const clearTask = () => {
     setSelectedTask(null)
     setTerminationMode('max_steps')
+  }
+
+  // AI generation handler
+  const handleGenerateSimulation = async () => {
+    if (!aiDescription.trim() || aiDescription.length < 10) {
+      setGenerateError('Please provide a description of at least 10 characters')
+      return
+    }
+
+    setIsGenerating(true)
+    setGenerateError(null)
+
+    try {
+      const response = await api.generateSimulation({
+        description: aiDescription,
+        num_agents: aiNumAgents,
+      })
+
+      if (response.success && response.config) {
+        const config = response.config
+
+        // Apply generated config to form
+        setName(config.name || 'Generated Simulation')
+        setSteps(config.steps || 10)
+        setInitialPrompt(config.initial_prompt || '')
+
+        // Convert agents
+        const generatedAgents: AgentConfig[] = (config.agents || []).map((a) => ({
+          name: a.name || 'Agent',
+          background: a.background || '',
+          role: a.role || 'peer',
+          traits: a.traits || defaultAgent.traits,
+        }))
+
+        if (generatedAgents.length >= 2) {
+          setAgents(generatedAgents)
+        }
+
+        // Clear other selections
+        setSelectedTemplate(null)
+        setSelectedTask(null)
+        setShowAiGenerator(false)
+        setShowTemplates(false)
+        setErrors({})
+        setTouched({})
+
+        toast.success('Simulation generated', 'Review and modify the configuration as needed.')
+      } else {
+        setGenerateError(response.error || 'Failed to generate simulation. Please try again.')
+      }
+    } catch (error) {
+      console.error('Generation failed:', error)
+      setGenerateError('Failed to generate simulation. Please try again.')
+    } finally {
+      setIsGenerating(false)
+    }
   }
 
   // Fetch personas for the picker
@@ -419,16 +488,123 @@ export default function SimulationCreate() {
               >
                 Or start from scratch
               </button>
-              {availableTasks.length > 0 && (
+              <div className="flex gap-2">
                 <Button
                   variant="outline"
                   size="sm"
-                  onClick={() => setShowTaskPicker(true)}
+                  onClick={() => {
+                    setShowAiGenerator(true)
+                    setShowTemplates(false)
+                  }}
                 >
-                  <Target className="h-4 w-4 mr-2" />
-                  Run Evaluation Task
+                  <Wand2 className="h-4 w-4 mr-2" />
+                  Describe with AI
                 </Button>
-              )}
+                {availableTasks.length > 0 && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setShowTaskPicker(true)}
+                  >
+                    <Target className="h-4 w-4 mr-2" />
+                    Run Evaluation Task
+                  </Button>
+                )}
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* AI Generation Card */}
+      {showAiGenerator && (
+        <Card className="mb-6 border-primary/30">
+          <CardHeader>
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Wand2 className="h-5 w-5 text-primary" />
+                <CardTitle>Describe Your Simulation</CardTitle>
+              </div>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => {
+                  setShowAiGenerator(false)
+                  setShowTemplates(true)
+                }}
+              >
+                <X className="h-4 w-4 mr-1" />
+                Cancel
+              </Button>
+            </div>
+            <CardDescription>
+              Describe the simulation in plain English and AI will generate the configuration.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div>
+              <Label htmlFor="ai-description">Description *</Label>
+              <Textarea
+                id="ai-description"
+                value={aiDescription}
+                onChange={(e) => setAiDescription(e.target.value)}
+                placeholder="Example: A panel discussion between three experts debating the future of renewable energy. Include a moderator who is organized and neutral, and two experts with opposing viewpoints - one optimistic and one skeptical."
+                rows={4}
+                className="mt-1.5"
+              />
+              <p className="text-xs text-foreground-muted mt-1">
+                Be specific about the number of agents, their roles, and what they should discuss.
+              </p>
+            </div>
+
+            <div>
+              <Label htmlFor="ai-num-agents">Number of Agents (optional)</Label>
+              <Input
+                id="ai-num-agents"
+                type="number"
+                min={2}
+                max={10}
+                value={aiNumAgents || ''}
+                onChange={(e) => setAiNumAgents(e.target.value ? parseInt(e.target.value) : undefined)}
+                placeholder="Auto-detect"
+                className="mt-1.5 w-32"
+              />
+            </div>
+
+            {generateError && (
+              <div className="p-3 rounded-lg bg-red-500/10 border border-red-500/30 text-red-600 dark:text-red-400 text-sm">
+                {generateError}
+              </div>
+            )}
+
+            <div className="flex gap-2 pt-2">
+              <Button
+                onClick={handleGenerateSimulation}
+                disabled={isGenerating || !aiDescription.trim()}
+              >
+                {isGenerating ? (
+                  <>
+                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                    Generating...
+                  </>
+                ) : (
+                  <>
+                    <Sparkles className="h-4 w-4 mr-2" />
+                    Generate Simulation
+                  </>
+                )}
+              </Button>
+            </div>
+
+            {/* Tips */}
+            <div className="pt-3 border-t border-border">
+              <p className="text-sm font-medium mb-2">Tips for better results:</p>
+              <ul className="text-xs text-foreground-muted space-y-1">
+                <li>• Describe distinct personalities (creative, analytical, skeptical, etc.)</li>
+                <li>• Mention the context or topic of discussion</li>
+                <li>• Specify relationships between agents if relevant</li>
+                <li>• Include desired interaction style (formal, casual, debate-style)</li>
+              </ul>
             </div>
           </CardContent>
         </Card>
@@ -455,7 +631,7 @@ export default function SimulationCreate() {
       )}
 
       {/* Show templates button when hidden */}
-      {!showTemplates && !selectedTemplate && !selectedTask && (
+      {!showTemplates && !selectedTemplate && !selectedTask && !showAiGenerator && (
         <div className="flex gap-2 mb-6">
           <Button
             variant="outline"
@@ -463,6 +639,13 @@ export default function SimulationCreate() {
           >
             <Sparkles className="h-4 w-4 mr-2" />
             Browse Templates
+          </Button>
+          <Button
+            variant="outline"
+            onClick={() => setShowAiGenerator(true)}
+          >
+            <Wand2 className="h-4 w-4 mr-2" />
+            Describe with AI
           </Button>
           {availableTasks.length > 0 && (
             <Button
