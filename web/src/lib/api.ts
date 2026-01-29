@@ -430,6 +430,11 @@ export const api = {
     return request<Simulation>(`/simulations/${id}`)
   },
 
+  /** Get coordination metrics for a simulation (ADR-020.1) */
+  getSimulationCoordinationMetrics: async (simulationId: string) => {
+    return request<CoordinationMetrics>(`/simulations/${simulationId}/coordination-metrics`)
+  },
+
   createSimulation: async (data: {
     name: string
     steps: number

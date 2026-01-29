@@ -203,27 +203,43 @@ export default function SimulationDetail() {
     })
   }, [agentsList])
 
-  // Compute coordination metrics from messages (simplified for now)
+  // Fetch real coordination metrics from API (ADR-020.1)
   // NOTE: Must be called before any early returns to maintain hooks order
+  const { data: coordinationMetricsData } = useQuery({
+    queryKey: ['simulation-coordination-metrics', id],
+    queryFn: () => api.getSimulationCoordinationMetrics(id!),
+    enabled: !!id && hasDualControlRoles,
+    refetchInterval: isSimulationRunning ? 5000 : false, // Poll while running
+  })
+
+  // Transform API response to component format
   const coordinationMetrics = useMemo(() => {
     if (!hasDualControlRoles) return null
 
-    // Count coordination events from messages
-    // This is a simplified calculation - real implementation would track actual handoffs
-    const totalMessages = messages.length
-    const handoffsRequired = Math.ceil(totalMessages / 5) // Estimate
-    const handoffsCompleted = Math.floor(handoffsRequired * 0.8) // Estimate 80% success
-
-    return {
-      totalHandoffsRequired: handoffsRequired,
-      handoffsCompleted: handoffsCompleted,
-      coordinationSuccessRate: handoffsRequired > 0 ? handoffsCompleted / handoffsRequired : 0,
-      avgInstructionToActionTurns: 1.5,
-      unnecessaryUserActions: Math.floor(totalMessages * 0.1),
-      instructionClarityScore: 0.75,
-      userConfusionCount: Math.floor(totalMessages * 0.05),
+    // Use real data from API if available, otherwise show zeros
+    if (coordinationMetricsData) {
+      return {
+        totalHandoffsRequired: coordinationMetricsData.total_handoffs_required,
+        handoffsCompleted: coordinationMetricsData.handoffs_completed,
+        coordinationSuccessRate: coordinationMetricsData.coordination_success_rate,
+        avgInstructionToActionTurns: coordinationMetricsData.avg_instruction_to_action_turns,
+        unnecessaryUserActions: coordinationMetricsData.unnecessary_user_actions,
+        instructionClarityScore: coordinationMetricsData.instruction_clarity_score ?? undefined,
+        userConfusionCount: coordinationMetricsData.user_confusion_count,
+      }
     }
-  }, [hasDualControlRoles, messages])
+
+    // Default empty metrics while loading
+    return {
+      totalHandoffsRequired: 0,
+      handoffsCompleted: 0,
+      coordinationSuccessRate: 0,
+      avgInstructionToActionTurns: 0,
+      unnecessaryUserActions: 0,
+      instructionClarityScore: undefined,
+      userConfusionCount: 0,
+    }
+  }, [hasDualControlRoles, coordinationMetricsData])
 
   if (isLoading) {
     return (
