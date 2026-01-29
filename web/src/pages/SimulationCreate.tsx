@@ -135,6 +135,7 @@ export default function SimulationCreate() {
   const [showTemplates, setShowTemplates] = useState(true)
   const [selectedTask, setSelectedTask] = useState<DualControlTaskDefinition | null>(null)
   const [showTaskPicker, setShowTaskPicker] = useState(false)
+  const [terminationMode, setTerminationMode] = useState<'max_steps' | 'goal' | 'hybrid'>('max_steps')
 
   // Apply a template to the form
   const applyTemplate = (template: SimulationTemplate) => {
@@ -202,6 +203,8 @@ export default function SimulationCreate() {
     setSelectedTemplate(null)
     setShowTemplates(false)
     setShowTaskPicker(false)
+    // Default to goal-based termination when a task is selected
+    setTerminationMode('goal')
     setErrors({})
     setTouched({})
     toast.success('Task applied', `"${task.name}" configuration loaded for evaluation.`)
@@ -210,6 +213,7 @@ export default function SimulationCreate() {
   // Clear task selection
   const clearTask = () => {
     setSelectedTask(null)
+    setTerminationMode('max_steps')
   }
 
   // Fetch personas for the picker
@@ -339,6 +343,8 @@ export default function SimulationCreate() {
       })) : undefined,
       // Include task_id for evaluation mode (τ²-bench)
       task_id: selectedTask?.task_id,
+      // Include termination mode
+      termination_mode: terminationMode,
     })
   }
 
@@ -540,7 +546,9 @@ export default function SimulationCreate() {
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="steps">Number of Steps</Label>
+              <Label htmlFor="steps">
+                {terminationMode === 'max_steps' ? 'Number of Steps' : 'Max Steps'}
+              </Label>
               <Input
                 id="steps"
                 type="number"
@@ -549,6 +557,83 @@ export default function SimulationCreate() {
                 value={steps}
                 onChange={(e) => setSteps(parseInt(e.target.value) || 1)}
               />
+              {terminationMode !== 'max_steps' && (
+                <p className="text-xs text-foreground-muted">
+                  Simulation may stop earlier if goal is achieved
+                </p>
+              )}
+            </div>
+
+            {/* Termination Mode */}
+            <div className="space-y-3">
+              <Label>Termination Mode</Label>
+              <div className="space-y-2">
+                <label className="flex items-start gap-3 p-3 rounded-lg border border-border cursor-pointer hover:bg-background-secondary transition-colors">
+                  <input
+                    type="radio"
+                    name="termination"
+                    value="max_steps"
+                    checked={terminationMode === 'max_steps'}
+                    onChange={() => setTerminationMode('max_steps')}
+                    className="mt-0.5 accent-primary"
+                  />
+                  <div>
+                    <span className="font-medium text-sm">Run for max steps</span>
+                    <p className="text-xs text-foreground-muted">
+                      Simulation runs for exactly {steps} steps
+                    </p>
+                  </div>
+                </label>
+                <label className={cn(
+                  'flex items-start gap-3 p-3 rounded-lg border cursor-pointer transition-colors',
+                  !selectedTask
+                    ? 'border-border/50 opacity-60 cursor-not-allowed'
+                    : 'border-border hover:bg-background-secondary'
+                )}>
+                  <input
+                    type="radio"
+                    name="termination"
+                    value="goal"
+                    checked={terminationMode === 'goal'}
+                    onChange={() => setTerminationMode('goal')}
+                    disabled={!selectedTask}
+                    className="mt-0.5 accent-primary"
+                  />
+                  <div>
+                    <span className="font-medium text-sm">Stop when goal achieved</span>
+                    <p className="text-xs text-foreground-muted">
+                      Simulation stops early if task goal is met
+                    </p>
+                    {!selectedTask && (
+                      <p className="text-xs text-warning mt-1">
+                        Select an evaluation task to enable goal-based termination
+                      </p>
+                    )}
+                  </div>
+                </label>
+                <label className={cn(
+                  'flex items-start gap-3 p-3 rounded-lg border cursor-pointer transition-colors',
+                  !selectedTask
+                    ? 'border-border/50 opacity-60 cursor-not-allowed'
+                    : 'border-border hover:bg-background-secondary'
+                )}>
+                  <input
+                    type="radio"
+                    name="termination"
+                    value="hybrid"
+                    checked={terminationMode === 'hybrid'}
+                    onChange={() => setTerminationMode('hybrid')}
+                    disabled={!selectedTask}
+                    className="mt-0.5 accent-primary"
+                  />
+                  <div>
+                    <span className="font-medium text-sm">Hybrid</span>
+                    <p className="text-xs text-foreground-muted">
+                      Stops at goal OR max steps, whichever comes first
+                    </p>
+                  </div>
+                </label>
+              </div>
             </div>
 
             <div className="space-y-2">

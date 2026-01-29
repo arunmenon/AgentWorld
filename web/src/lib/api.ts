@@ -32,6 +32,28 @@ async function request<T>(endpoint: string, options: RequestOptions = {}): Promi
 }
 
 // Types
+/** Goal progress information for simulations */
+export interface GoalProgress {
+  goal_spec?: {
+    conditions: Array<{
+      id?: string
+      goal_type: string
+      description: string
+      app_id?: string
+      field_path?: string
+      operator?: string
+      expected_value?: unknown
+      handoff_id?: string
+      required_phrase?: string
+    }>
+    success_mode: 'all' | 'any'
+    description: string
+  }
+  goal_achieved: boolean
+  goal_achieved_step?: number
+  termination_mode: 'max_steps' | 'goal' | 'hybrid'
+}
+
 export interface Simulation {
   id: string
   name: string
@@ -48,6 +70,8 @@ export interface Simulation {
   updated_at: string | null
   /** τ²-bench: Task ID if this is an evaluation run */
   task_id?: string
+  /** Goal-based termination info (ADR-020.1) */
+  goal?: GoalProgress
 }
 
 export interface Agent {
@@ -424,6 +448,8 @@ export const api = {
     }>
     /** τ²-bench: Optional task ID for evaluation mode */
     task_id?: string
+    /** Goal-based termination mode (ADR-020.1) */
+    termination_mode?: 'max_steps' | 'goal' | 'hybrid'
   }) => {
     return request<Simulation>('/simulations', { method: 'POST', body: data })
   },

@@ -20,6 +20,10 @@ import {
   ArrowRightLeft,
   Target,
   Eye,
+  Database,
+  Zap,
+  RefreshCw,
+  MessageSquare,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { api } from '@/lib/api'
@@ -32,8 +36,9 @@ import {
 import type {
   DualControlTask,
   ExpectedHandoff,
-  GoalStateCondition,
 } from '@/components/tasks'
+import type { GoalCondition, GoalType } from '@/lib/goals'
+import { getGoalTypeLabel } from '@/lib/goals'
 
 type WizardStep = 'info' | 'handoffs' | 'goals' | 'review'
 
@@ -96,6 +101,29 @@ function StepIndicator({
       })}
     </div>
   )
+}
+
+/** Helper to get goal category for display */
+function getGoalCategory(goalType: GoalType): 'state' | 'action' | 'coordination' | 'output' {
+  if (goalType.startsWith('state_')) return 'state'
+  if (goalType.startsWith('action_')) return 'action'
+  if (goalType === 'handoff_completed' || goalType === 'all_handoffs_done') return 'coordination'
+  if (goalType === 'output_contains') return 'output'
+  return 'state'
+}
+
+/** Get category display info */
+function getCategoryDisplay(category: 'state' | 'action' | 'coordination' | 'output') {
+  switch (category) {
+    case 'state':
+      return { icon: <Database className="h-3 w-3" />, bgClass: 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400' }
+    case 'action':
+      return { icon: <Zap className="h-3 w-3" />, bgClass: 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400' }
+    case 'coordination':
+      return { icon: <RefreshCw className="h-3 w-3" />, bgClass: 'bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400' }
+    case 'output':
+      return { icon: <MessageSquare className="h-3 w-3" />, bgClass: 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400' }
+  }
 }
 
 function ReviewStep({ task }: { task: Partial<DualControlTask> }) {
@@ -187,21 +215,62 @@ function ReviewStep({ task }: { task: Partial<DualControlTask> }) {
         <h3 className="font-medium mb-2">Goal Conditions ({task.goalState?.length || 0})</h3>
         {task.goalState && task.goalState.length > 0 ? (
           <div className="space-y-2">
-            {task.goalState.map((g, i) => (
-              <div
-                key={g.id}
-                className="p-3 rounded-lg bg-background-secondary/50 border border-border flex items-center gap-2 font-mono text-sm"
-              >
-                <span className="text-xs font-medium bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400 px-2 py-0.5 rounded">
-                  #{i + 1}
-                </span>
-                <span>{g.appId}.{g.field}</span>
-                <span className="px-1.5 py-0.5 rounded bg-background">{g.operator}</span>
-                {g.operator !== 'exists' && (
-                  <span className="text-green-600">{JSON.stringify(g.value)}</span>
-                )}
-              </div>
-            ))}
+            {task.goalState.map((g, i) => {
+              const goalCondition = g as GoalCondition
+              const category = getGoalCategory(goalCondition.goalType)
+              const categoryDisplay = getCategoryDisplay(category)
+
+              return (
+                <div
+                  key={goalCondition.id}
+                  className="p-3 rounded-lg bg-background-secondary/50 border border-border flex items-center gap-2 text-sm"
+                >
+                  <span className="text-xs font-medium bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400 px-2 py-0.5 rounded">
+                    #{i + 1}
+                  </span>
+
+                  {/* Category badge */}
+                  <span className={cn('flex items-center gap-1 px-1.5 py-0.5 rounded text-xs font-medium', categoryDisplay.bgClass)}>
+                    {categoryDisplay.icon}
+                    {getGoalTypeLabel(goalCondition.goalType)}
+                  </span>
+
+                  {/* Condition details based on type */}
+                  <span className="font-mono text-foreground-muted">
+                    {category === 'state' && (
+                      <>
+                        {goalCondition.appId}.{goalCondition.fieldPath}
+                        <span className="mx-1 px-1 py-0.5 rounded bg-background">{goalCondition.operator}</span>
+                        {goalCondition.operator !== 'exists' && goalCondition.operator !== 'not_exists' && (
+                          <span className="text-green-600 dark:text-green-400">{JSON.stringify(goalCondition.expectedValue)}</span>
+                        )}
+                      </>
+                    )}
+                    {category === 'action' && (
+                      <>
+                        {goalCondition.appId} → <span className="text-amber-600 dark:text-amber-400">{goalCondition.expectedValue as string}</span>
+                      </>
+                    )}
+                    {category === 'coordination' && (
+                      goalCondition.goalType === 'all_handoffs_done' ? (
+                        <span className="text-purple-600 dark:text-purple-400">All handoffs</span>
+                      ) : (
+                        <>
+                          Handoff: <span className="text-purple-600 dark:text-purple-400">{goalCondition.handoffId}</span>
+                        </>
+                      )
+                    )}
+                    {category === 'output' && (
+                      <>
+                        Agent says: "<span className="text-green-600 dark:text-green-400">
+                          {(goalCondition.requiredPhrase || '').substring(0, 40)}{(goalCondition.requiredPhrase?.length || 0) > 40 ? '...' : ''}
+                        </span>"
+                      </>
+                    )}
+                  </span>
+                </div>
+              )
+            })}
           </div>
         ) : (
           <p className="text-sm text-foreground-muted">No goal conditions defined</p>
@@ -255,13 +324,41 @@ export function TaskCreate() {
     setTaskData((prev) => ({ ...prev, expectedHandoffs: handoffs }))
   }
 
-  const handleGoalsChange = (goals: GoalStateCondition[]) => {
+  const handleGoalsChange = (goals: GoalCondition[]) => {
     setTaskData((prev) => ({ ...prev, goalState: goals }))
   }
 
   const handleCreate = async () => {
     setIsSubmitting(true)
     try {
+      // Convert goal conditions to API format
+      const goalConditions = (taskData.goalState || []).map((g) => {
+        const condition = g as GoalCondition
+        return {
+          goal_type: condition.goalType,
+          description: condition.description || '',
+          app_id: condition.appId,
+          field_path: condition.fieldPath,
+          operator: condition.operator,
+          expected_value: condition.expectedValue,
+          handoff_id: condition.handoffId,
+          required_phrase: condition.requiredPhrase,
+        }
+      })
+
+      // Build legacy goal state for backwards compatibility
+      const legacyGoalState = Object.fromEntries(
+        (taskData.goalState || [])
+          .filter((g) => {
+            const condition = g as GoalCondition
+            return condition.goalType.startsWith('state_') && condition.appId && condition.fieldPath
+          })
+          .map((g) => {
+            const condition = g as GoalCondition
+            return [`${condition.appId}.${condition.fieldPath}`, condition.expectedValue]
+          })
+      )
+
       // Convert frontend task format to API request format
       const request = {
         task_id: taskData.name?.toLowerCase().replace(/\s+/g, '-') || `task-${Date.now()}`,
@@ -269,7 +366,10 @@ export function TaskCreate() {
         description: taskData.description || '',
         domain: taskData.tags?.[0] || 'general',
         difficulty: 'medium',
-        simulation_config: {},
+        simulation_config: {
+          // Include structured goal conditions in simulation config
+          goal_conditions: goalConditions,
+        },
         agent_id: 'agent-1',
         agent_role: taskData.agentRole || 'service_agent',
         agent_instruction: `Guide the user to complete: ${taskData.goalDescription}`,
@@ -281,9 +381,7 @@ export function TaskCreate() {
         user_instruction: taskData.goalDescription || '',
         user_apps: taskData.userApps || [],
         user_initial_state: taskData.initialState || {},
-        user_goal_state: Object.fromEntries(
-          (taskData.goalState || []).map((g) => [`${g.appId}.${g.field}`, g.value])
-        ),
+        user_goal_state: legacyGoalState,
         required_handoffs: (taskData.expectedHandoffs || []).map((h) => ({
           handoff_id: h.id,
           from_role: h.fromRole,
@@ -406,6 +504,7 @@ export function TaskCreate() {
               value={taskData.goalState || []}
               onChange={handleGoalsChange}
               availableApps={appsWithActions}
+              availableHandoffs={taskData.expectedHandoffs}
             />
 
             <div className="flex justify-between pt-4 border-t border-border">

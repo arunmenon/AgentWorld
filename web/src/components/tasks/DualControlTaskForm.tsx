@@ -23,6 +23,10 @@ import {
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import type { AgentRole, AppDefinition } from '@/lib/api'
+import type { GoalCondition } from '@/lib/goals'
+
+// Re-export GoalCondition as GoalStateCondition for backwards compatibility
+export type { GoalCondition as GoalStateCondition } from '@/lib/goals'
 
 export interface DualControlTask {
   id?: string
@@ -40,23 +44,14 @@ export interface DualControlTask {
   initialState: Record<string, Record<string, unknown>>
   /** Natural language goal description */
   goalDescription: string
-  /** Structured goal state conditions */
-  goalState: GoalStateCondition[]
+  /** Structured goal state conditions (uses full GoalCondition type) */
+  goalState: GoalCondition[]
   /** Expected handoff sequence */
   expectedHandoffs: ExpectedHandoff[]
   /** Maximum steps allowed */
   maxSteps: number
   /** Tags for categorization */
   tags: string[]
-}
-
-export interface GoalStateCondition {
-  id: string
-  appId: string
-  field: string
-  operator: 'equals' | 'contains' | 'gt' | 'lt' | 'gte' | 'lte' | 'exists'
-  value: unknown
-  description?: string
 }
 
 export interface ExpectedHandoff {
@@ -224,7 +219,8 @@ export function DualControlTaskForm({
       newErrors.goalDescription = 'Goal description is required'
     }
 
-    if ((formData.userApps?.length || 0) === 0) {
+    // Only require app selection if apps are available
+    if (availableApps.length > 0 && (formData.userApps?.length || 0) === 0) {
       newErrors.userApps = 'Select at least one app for the user'
     }
 

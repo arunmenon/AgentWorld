@@ -11,6 +11,7 @@ import {
   BookOpen,
   Menu,
   X,
+  ClipboardList,
 } from 'lucide-react'
 import { useState } from 'react'
 import { Button } from '@/components/ui'
@@ -27,6 +28,7 @@ const navItems: NavItem[] = [
   { label: 'Personas', href: '/personas', icon: Users },
   { label: 'App Studio', href: '/apps', icon: Layers },
   { label: 'Experiments', href: '/experiments', icon: FlaskConical },
+  { label: 'Tasks', href: '/tasks/new', icon: ClipboardList },
   { label: 'Documentation', href: '/docs', icon: BookOpen },
   { label: 'Settings', href: '/settings', icon: Settings },
 ]
