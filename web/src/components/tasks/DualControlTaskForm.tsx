@@ -54,6 +54,12 @@ export interface DualControlTask {
   tags: string[]
 }
 
+export interface InstructionTemplate {
+  templateId: string
+  keywords: string[]
+  targetKeywords: string[]
+}
+
 export interface ExpectedHandoff {
   id: string
   order: number
@@ -63,6 +69,8 @@ export interface ExpectedHandoff {
   appId?: string
   description?: string
   isOptional?: boolean
+  /** Template for detecting agent instructions during simulation */
+  instructionTemplate?: InstructionTemplate
 }
 
 interface DualControlTaskFormProps {

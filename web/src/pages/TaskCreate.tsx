@@ -24,6 +24,9 @@ import {
   Zap,
   RefreshCw,
   MessageSquare,
+  Sparkles,
+  PenTool,
+  Loader2,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { api } from '@/lib/api'
@@ -37,7 +40,7 @@ import type {
   DualControlTask,
   ExpectedHandoff,
 } from '@/components/tasks'
-import type { GoalCondition, GoalType } from '@/lib/goals'
+import type { GoalCondition, GoalType, GoalOperator } from '@/lib/goals'
 import { getGoalTypeLabel } from '@/lib/goals'
 
 type WizardStep = 'info' | 'handoffs' | 'goals' | 'review'
@@ -293,6 +296,13 @@ export function TaskCreate() {
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [availableApps, setAvailableApps] = useState<AppDefinition[]>([])
 
+  // AI Generation state
+  const [aiMode, setAiMode] = useState(true) // Start in AI mode
+  const [aiDescription, setAiDescription] = useState('')
+  const [aiDomainHint, setAiDomainHint] = useState('')
+  const [isGenerating, setIsGenerating] = useState(false)
+  const [generateError, setGenerateError] = useState<string | null>(null)
+
   const [taskData, setTaskData] = useState<Partial<DualControlTask>>({
     name: '',
     description: '',
@@ -314,6 +324,97 @@ export function TaskCreate() {
       .then((response) => setAvailableApps(response.apps as AppDefinition[]))
       .catch(console.error)
   }, [])
+
+  // AI generation handler
+  const handleGenerate = async () => {
+    if (!aiDescription.trim() || aiDescription.length < 10) {
+      setGenerateError('Please provide a description of at least 10 characters')
+      return
+    }
+
+    setIsGenerating(true)
+    setGenerateError(null)
+
+    try {
+      // Prepare available apps with their actions for AI
+      const appsForAI = availableApps.map((app) => ({
+        app_id: app.app_id,
+        name: app.name,
+        actions: (app.actions || []).map((a) => ({
+          name: a.name,
+          description: a.description || '',
+        })),
+      }))
+
+      const response = await api.generateTask({
+        description: aiDescription,
+        domain_hint: aiDomainHint || undefined,
+        available_apps: appsForAI.length > 0 ? appsForAI : undefined,
+      })
+
+      if (response.success && response.task) {
+        const generated = response.task as Record<string, unknown>
+
+        // Convert generated task to frontend format
+        const handoffs = (generated.required_handoffs as Array<Record<string, unknown>> || []).map((h, i) => {
+          const template = h.instruction_template as Record<string, unknown> | undefined
+          return {
+            id: (h.handoff_id as string) || `handoff_${i + 1}`,
+            order: i + 1,
+            fromRole: (h.from_role as 'service_agent' | 'customer') || 'service_agent',
+            toRole: (h.to_role as 'service_agent' | 'customer') || 'customer',
+            expectedAction: (h.expected_action as string) || '',
+            appId: (h.app_id as string) || undefined, // Include app_id from AI
+            description: (h.description as string) || '',
+            isOptional: false,
+            instructionTemplate: template ? {
+              templateId: (template.template_id as string) || `template_${i + 1}`,
+              keywords: (template.keywords as string[]) || [],
+              targetKeywords: (template.target_keywords as string[]) || [],
+            } : undefined,
+          }
+        })
+
+        const goalConditions: GoalCondition[] = (generated.goal_conditions as Array<Record<string, unknown>> || []).map((g, i) => ({
+          id: (g.id as string) || `goal_${i + 1}`,
+          goalType: (g.goal_type as GoalType) || 'state_equals',
+          description: (g.description as string) || '',
+          appId: g.app_id as string | undefined,
+          fieldPath: g.field_path as string | undefined,
+          operator: (g.operator as GoalOperator) || 'equals',
+          expectedValue: g.expected_value,
+          handoffId: g.handoff_id as string | undefined,
+          requiredPhrase: g.required_phrase as string | undefined,
+        }))
+
+        setTaskData({
+          name: (generated.name as string) || '',
+          description: (generated.description as string) || '',
+          agentRole: (generated.agent_role as 'service_agent' | 'customer') || 'service_agent',
+          userRole: (generated.user_role as 'service_agent' | 'customer') || 'customer',
+          userApps: (generated.user_apps as string[]) || [],
+          agentApps: (generated.agent_apps as string[]) || [],
+          initialState: (generated.initial_state as Record<string, Record<string, unknown>>) || {},
+          goalDescription: (generated.user_instruction as string) || (generated.scenario_prompt as string) || '',
+          goalState: goalConditions,
+          expectedHandoffs: handoffs,
+          maxSteps: (generated.max_turns as number) || 10,
+          tags: (generated.tags as string[]) || [(generated.domain as string) || 'general'],
+        })
+
+        // Exit AI mode and go to info step to review
+        setAiMode(false)
+        setCurrentStep('info')
+      } else {
+        setGenerateError(response.error || 'Failed to generate task. Please try again.')
+      }
+    } catch (error) {
+      console.error('Generation failed:', error)
+      setGenerateError('Failed to generate task. Please try again.')
+    } finally {
+      setIsGenerating(false)
+    }
+  }
 
   const handleInfoSubmit = (data: DualControlTask) => {
     setTaskData((prev) => ({ ...prev, ...data }))
@@ -388,6 +489,11 @@ export function TaskCreate() {
           to_role: h.toRole,
           expected_action: h.expectedAction,
           description: h.description || '',
+          instruction_template: h.instructionTemplate ? {
+            template_id: h.instructionTemplate.templateId,
+            keywords: h.instructionTemplate.keywords,
+            target_keywords: h.instructionTemplate.targetKeywords,
+          } : undefined,
         })),
         max_turns: taskData.maxSteps || 10,
         expected_coordination_count: taskData.expectedHandoffs?.length || 0,
@@ -451,14 +557,146 @@ export function TaskCreate() {
               </div>
             </div>
 
-            <StepIndicator currentStep={currentStep} onStepClick={setCurrentStep} />
+            {!aiMode && (
+              <StepIndicator currentStep={currentStep} onStepClick={setCurrentStep} />
+            )}
           </div>
         </div>
       </div>
 
       {/* Content */}
       <div className="max-w-4xl mx-auto px-6 py-8">
-        {currentStep === 'info' && (
+        {/* Mode Toggle */}
+        <div className="flex gap-2 mb-6">
+          <button
+            type="button"
+            onClick={() => setAiMode(true)}
+            className={cn(
+              'flex items-center gap-2 px-4 py-2 rounded-lg border transition-all',
+              aiMode
+                ? 'border-primary bg-primary/10 text-primary'
+                : 'border-border hover:bg-background-secondary'
+            )}
+          >
+            <Sparkles className="h-4 w-4" />
+            Describe with AI
+          </button>
+          <button
+            type="button"
+            onClick={() => setAiMode(false)}
+            className={cn(
+              'flex items-center gap-2 px-4 py-2 rounded-lg border transition-all',
+              !aiMode
+                ? 'border-primary bg-primary/10 text-primary'
+                : 'border-border hover:bg-background-secondary'
+            )}
+          >
+            <PenTool className="h-4 w-4" />
+            Configure Manually
+          </button>
+        </div>
+
+        {/* AI Generation Mode */}
+        {aiMode && (
+          <div className="space-y-6">
+            <div className="p-6 rounded-lg border border-border bg-background-secondary/30">
+              <div className="flex items-start gap-3 mb-4">
+                <div className="h-10 w-10 rounded-lg bg-primary/10 flex items-center justify-center flex-shrink-0">
+                  <Sparkles className="h-5 w-5 text-primary" />
+                </div>
+                <div>
+                  <h2 className="font-semibold">Describe Your Scenario</h2>
+                  <p className="text-sm text-foreground-muted">
+                    Describe the evaluation scenario in plain English and AI will generate the task configuration.
+                  </p>
+                </div>
+              </div>
+
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-sm font-medium mb-2">
+                    Scenario Description *
+                  </label>
+                  <textarea
+                    value={aiDescription}
+                    onChange={(e) => setAiDescription(e.target.value)}
+                    placeholder="Example: A customer wants to dispute a $50 charge on their PayPal account. The agent should help them file the dispute and confirm it was submitted successfully. The customer needs to verify their identity first before the agent can process the dispute."
+                    rows={5}
+                    className="w-full px-3 py-2 rounded-lg border border-border bg-background focus:outline-none focus:ring-2 focus:ring-primary/50 resize-none"
+                  />
+                  <p className="text-xs text-foreground-muted mt-1">
+                    Be specific about what the customer wants to accomplish and what actions are involved.
+                  </p>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium mb-2">
+                    Domain Hint (optional)
+                  </label>
+                  <select
+                    value={aiDomainHint}
+                    onChange={(e) => setAiDomainHint(e.target.value)}
+                    className="w-full px-3 py-2 rounded-lg border border-border bg-background focus:outline-none focus:ring-2 focus:ring-primary/50"
+                  >
+                    <option value="">Auto-detect</option>
+                    <option value="paypal">PayPal / Payments</option>
+                    <option value="emirates">Emirates / Airlines</option>
+                    <option value="banking">Banking / Finance</option>
+                    <option value="shopping">Shopping / E-commerce</option>
+                    <option value="telecom">Telecom / Mobile</option>
+                    <option value="general">General</option>
+                  </select>
+                </div>
+
+                {generateError && (
+                  <div className="p-3 rounded-lg bg-red-500/10 border border-red-500/30 text-red-600 dark:text-red-400 text-sm">
+                    {generateError}
+                  </div>
+                )}
+
+                <button
+                  type="button"
+                  onClick={handleGenerate}
+                  disabled={isGenerating || !aiDescription.trim()}
+                  className={cn(
+                    'flex items-center gap-2 px-6 py-2.5 rounded-lg bg-primary text-primary-foreground font-medium transition-all',
+                    isGenerating || !aiDescription.trim()
+                      ? 'opacity-50 cursor-not-allowed'
+                      : 'hover:bg-primary/90'
+                  )}
+                >
+                  {isGenerating ? (
+                    <>
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                      Generating...
+                    </>
+                  ) : (
+                    <>
+                      <Sparkles className="h-4 w-4" />
+                      Generate Task
+                    </>
+                  )}
+                </button>
+              </div>
+            </div>
+
+            {/* Tips */}
+            <div className="p-4 rounded-lg border border-border bg-background-secondary/30">
+              <h3 className="font-medium mb-2 flex items-center gap-2">
+                <span className="text-lg">💡</span> Tips for better results
+              </h3>
+              <ul className="text-sm text-foreground-muted space-y-1">
+                <li>• Describe what the customer wants to accomplish</li>
+                <li>• Mention specific actions (transfer, dispute, book, cancel, etc.)</li>
+                <li>• Include amounts or details for realistic scenarios</li>
+                <li>• Specify any required verification or coordination steps</li>
+              </ul>
+            </div>
+          </div>
+        )}
+
+        {/* Manual Configuration Mode */}
+        {!aiMode && currentStep === 'info' && (
           <DualControlTaskForm
             initialValues={taskData}
             availableApps={availableApps}
@@ -467,7 +705,7 @@ export function TaskCreate() {
           />
         )}
 
-        {currentStep === 'handoffs' && (
+        {!aiMode && currentStep === 'handoffs' && (
           <div className="space-y-6">
             <HandoffEditor
               value={taskData.expectedHandoffs || []}
@@ -498,7 +736,7 @@ export function TaskCreate() {
           </div>
         )}
 
-        {currentStep === 'goals' && (
+        {!aiMode && currentStep === 'goals' && (
           <div className="space-y-6">
             <GoalStateEditor
               value={taskData.goalState || []}
@@ -528,7 +766,7 @@ export function TaskCreate() {
           </div>
         )}
 
-        {currentStep === 'review' && (
+        {!aiMode && currentStep === 'review' && (
           <div className="space-y-6">
             <ReviewStep task={taskData} />
 

@@ -15,6 +15,8 @@ import {
   GripVertical,
   ArrowRight,
   AlertCircle,
+  HelpCircle,
+  Sparkles,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import type { AgentRole } from '@/lib/api'
@@ -281,6 +283,70 @@ export function HandoffEditor({
                     placeholder="e.g., User transfers money after agent confirms details"
                     className="w-full px-3 py-2 rounded-lg border border-border bg-background text-sm"
                   />
+                </div>
+
+                {/* Instruction Template */}
+                <div className="col-span-2 p-3 rounded-lg bg-background-secondary/50 border border-border/50 space-y-3">
+                  <div className="flex items-center gap-2">
+                    <Sparkles className="h-3.5 w-3.5 text-primary" />
+                    <span className="text-xs font-medium">Instruction Detection</span>
+                    <div className="relative group">
+                      <HelpCircle className="h-3.5 w-3.5 text-foreground-muted cursor-help" />
+                      <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 w-72 p-3 rounded-lg bg-foreground text-background text-xs opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all z-50 shadow-lg">
+                        <p className="font-medium mb-1">How instruction detection works:</p>
+                        <p className="mb-2">During simulation, when the agent speaks, the system looks for these keywords to detect when an instruction is given.</p>
+                        <p className="text-background/80">Example: If agent says "Please <strong>verify</strong> your <strong>identity</strong>", the system matches "verify" (keyword) + "identity" (target) → Instruction detected!</p>
+                        <div className="absolute top-full left-1/2 -translate-x-1/2 border-4 border-transparent border-t-foreground"></div>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="space-y-1">
+                      <label className="text-xs text-foreground-muted">
+                        Action Keywords
+                      </label>
+                      <input
+                        type="text"
+                        value={handoff.instructionTemplate?.keywords?.join(', ') || ''}
+                        onChange={(e) => {
+                          const keywords = e.target.value.split(',').map(k => k.trim()).filter(Boolean)
+                          updateHandoff(index, {
+                            instructionTemplate: {
+                              templateId: handoff.instructionTemplate?.templateId || handoff.id,
+                              keywords,
+                              targetKeywords: handoff.instructionTemplate?.targetKeywords || [],
+                            }
+                          })
+                        }}
+                        placeholder="verify, confirm, check"
+                        className="w-full px-2.5 py-1.5 rounded border border-border bg-background text-xs"
+                      />
+                      <p className="text-[10px] text-foreground-muted">Verbs the agent might use</p>
+                    </div>
+                    <div className="space-y-1">
+                      <label className="text-xs text-foreground-muted">
+                        Target Keywords
+                      </label>
+                      <input
+                        type="text"
+                        value={handoff.instructionTemplate?.targetKeywords?.join(', ') || ''}
+                        onChange={(e) => {
+                          const targetKeywords = e.target.value.split(',').map(k => k.trim()).filter(Boolean)
+                          updateHandoff(index, {
+                            instructionTemplate: {
+                              templateId: handoff.instructionTemplate?.templateId || handoff.id,
+                              keywords: handoff.instructionTemplate?.keywords || [],
+                              targetKeywords,
+                            }
+                          })
+                        }}
+                        placeholder="identity, ID, account"
+                        className="w-full px-2.5 py-1.5 rounded border border-border bg-background text-xs"
+                      />
+                      <p className="text-[10px] text-foreground-muted">Nouns the instruction refers to</p>
+                    </div>
+                  </div>
                 </div>
               </div>
 
