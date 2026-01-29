@@ -60,14 +60,17 @@ def generate_response_guidance(
     if role == "service_agent":
         # Service agents should be professional and direct, not sycophantic
         guidance.append("Be professional and efficient in your responses.")
-        guidance.append("Guide the customer through steps clearly and directly.")
+        guidance.append("Guide the customer through the SPECIFIC steps in your task.")
         guidance.append("Avoid excessive pleasantries or over-apologizing.")
         guidance.append("Focus on resolving the customer's issue promptly.")
+        guidance.append("Stay on topic - only discuss what's needed to complete the task.")
 
     elif role == "customer":
         # Customers should act naturally, not overly polite
-        guidance.append("You are trying to resolve an issue or complete a task.")
+        guidance.append("You are trying to complete a specific task.")
+        guidance.append("Follow the agent's instructions to complete your task.")
         guidance.append("Be direct about what you need help with.")
+        guidance.append("Stay focused on the task at hand - don't go off-topic.")
 
         # Trait modifiers for customers
         if traits.neuroticism > 0.6:
@@ -147,9 +150,24 @@ def generate_system_prompt(
     # Personality section
     sections.append(generate_personality_prompt(traits, name))
 
+    # Role-specific scenario framing for evaluation tasks
+    if role in ("service_agent", "customer"):
+        sections.append(
+            "\n=== SCENARIO INSTRUCTIONS ===\n"
+            "You are participating in a simulated customer service interaction.\n"
+            "IMPORTANT: Focus ONLY on the specific task described below.\n"
+            "- IGNORE any task names, test identifiers, or metadata you may see.\n"
+            "- DO NOT discuss or explain the nature of the task/test itself.\n"
+            "- Act as if this is a REAL interaction, not a test scenario.\n"
+            "- Your ONLY goal is to complete the specific actions described in your instructions."
+        )
+
     # Background if provided
     if background:
-        sections.append(f"\nBackground:\n{background}")
+        if role in ("service_agent", "customer"):
+            sections.append(f"\nYOUR SPECIFIC TASK:\n{background}")
+        else:
+            sections.append(f"\nBackground:\n{background}")
 
     # Response guidance (role-aware)
     sections.append(f"\nResponse Style:\n{generate_response_guidance(traits, role=role)}")
@@ -184,13 +202,23 @@ def generate_system_prompt(
     if additional_instructions:
         sections.append(f"\nAdditional Instructions:\n{additional_instructions}")
 
-    # General guidelines
-    sections.append(
-        "\nGeneral Guidelines:\n"
-        "- Stay in character throughout the conversation\n"
-        "- Be authentic to your personality traits\n"
-        "- Engage naturally with other participants\n"
-        "- Express your genuine opinions and perspectives"
-    )
+    # General guidelines (role-aware)
+    if role in ("service_agent", "customer"):
+        sections.append(
+            "\nGeneral Guidelines:\n"
+            "- Stay in character throughout the conversation\n"
+            "- Focus EXCLUSIVELY on completing your assigned task\n"
+            "- Do NOT explain, discuss, or reference the task/test itself\n"
+            "- Act as if this is a real customer service interaction\n"
+            "- Respond only to what the other party says, stay on topic"
+        )
+    else:
+        sections.append(
+            "\nGeneral Guidelines:\n"
+            "- Stay in character throughout the conversation\n"
+            "- Be authentic to your personality traits\n"
+            "- Engage naturally with other participants\n"
+            "- Express your genuine opinions and perspectives"
+        )
 
     return "\n".join(sections)
