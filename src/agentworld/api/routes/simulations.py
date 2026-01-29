@@ -233,56 +233,72 @@ async def create_simulation(request: CreateSimulationRequest):
     # Parse termination mode
     termination_mode = TerminationMode(request.termination_mode)
 
-    # If task_id provided and goal/hybrid mode, inherit goal_spec from task
+    # If task_id provided, load task for goal_spec and potentially auto-configure apps
     goal_spec = None
     task_id = request.task_id
-    if task_id and termination_mode in (TerminationMode.GOAL, TerminationMode.HYBRID):
-        # Try to load task and get its goal spec
+    task = None  # Store task for reuse
+
+    if task_id:
+        # Try to load task
         try:
-            # Use SQLAlchemy session to fetch the dual control task
             session = repo.session
             task_model = session.query(DualControlTaskModel).filter(
                 DualControlTaskModel.task_id == task_id
             ).first()
             task = task_model.to_dict() if task_model else None
-            if task:
-                # Check for new goal_conditions format in simulation_config first
-                sim_config = task.get("simulation_config", {})
-                goal_conditions = sim_config.get("goal_conditions", [])
-
-                if goal_conditions:
-                    # Use new structured goal conditions format
-                    goal_spec = GoalSpec.from_dict({
-                        "conditions": goal_conditions,
-                        "success_mode": sim_config.get("success_mode", "all"),
-                        "description": task.get("description", ""),
-                    })
-                    logger.info(f"Loaded goal_spec from task {task_id} (new format): {len(goal_spec.conditions)} conditions")
-                else:
-                    # Fall back to legacy goal_state format
-                    user_goal = task.get("user_goal_state", {})
-                    agent_goal = task.get("agent_goal_state", {})
-                    combined_goals = {**user_goal, **agent_goal}
-                    if combined_goals:
-                        # Parse legacy format - handle both "app_id.field" and nested dict formats
-                        parsed_goals: dict[str, dict] = {}
-                        for key, value in combined_goals.items():
-                            if "." in key:
-                                app_id, field = key.split(".", 1)
-                                if app_id not in parsed_goals:
-                                    parsed_goals[app_id] = {}
-                                parsed_goals[app_id][field] = value
-                            elif isinstance(value, dict):
-                                parsed_goals[key] = value
-
-                        if parsed_goals:
-                            goal_spec = GoalSpec.from_legacy_goal_state(
-                                parsed_goals,
-                                description=task.get("description", ""),
-                            )
-                            logger.info(f"Loaded goal_spec from task {task_id} (legacy format): {len(goal_spec.conditions)} conditions")
         except Exception as e:
-            logger.warning(f"Failed to load task {task_id} for goal spec: {e}")
+            logger.warning(f"Failed to load task {task_id}: {e}")
+
+    # Auto-configure apps from task if no apps provided in request
+    if task and not apps_config:
+        task_agent_apps = task.get("agent_apps", [])
+        task_user_apps = task.get("user_apps", [])
+        all_task_apps = list(set(task_agent_apps + task_user_apps))
+
+        if all_task_apps:
+            apps_config = [{"id": app_id, "config": {}} for app_id in all_task_apps]
+            logger.info(f"Auto-configured apps from task {task_id}: {all_task_apps}")
+
+    # If task_id provided and goal/hybrid mode, inherit goal_spec from task
+    if task and termination_mode in (TerminationMode.GOAL, TerminationMode.HYBRID):
+        try:
+            # Check for new goal_conditions format in simulation_config first
+            sim_config = task.get("simulation_config", {})
+            goal_conditions = sim_config.get("goal_conditions", [])
+
+            if goal_conditions:
+                # Use new structured goal conditions format
+                goal_spec = GoalSpec.from_dict({
+                    "conditions": goal_conditions,
+                    "success_mode": sim_config.get("success_mode", "all"),
+                    "description": task.get("description", ""),
+                })
+                logger.info(f"Loaded goal_spec from task {task_id} (new format): {len(goal_spec.conditions)} conditions")
+            else:
+                # Fall back to legacy goal_state format
+                user_goal = task.get("user_goal_state", {})
+                agent_goal = task.get("agent_goal_state", {})
+                combined_goals = {**user_goal, **agent_goal}
+                if combined_goals:
+                    # Parse legacy format - handle both "app_id.field" and nested dict formats
+                    parsed_goals: dict[str, dict] = {}
+                    for key, value in combined_goals.items():
+                        if "." in key:
+                            app_id, field = key.split(".", 1)
+                            if app_id not in parsed_goals:
+                                parsed_goals[app_id] = {}
+                            parsed_goals[app_id][field] = value
+                        elif isinstance(value, dict):
+                            parsed_goals[key] = value
+
+                    if parsed_goals:
+                        goal_spec = GoalSpec.from_legacy_goal_state(
+                            parsed_goals,
+                            description=task.get("description", ""),
+                        )
+                        logger.info(f"Loaded goal_spec from task {task_id} (legacy format): {len(goal_spec.conditions)} conditions")
+        except Exception as e:
+            logger.warning(f"Failed to load goal_spec from task {task_id}: {e}")
 
     config = SimulationConfig(
         name=request.name,

@@ -45,6 +45,33 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/dual-control-tasks", tags=["Dual Control Tasks"])
 
 
+def _validate_apps_exist(
+    app_ids: list[str],
+    repo: "Repository",
+    field_name: str = "apps",
+) -> list[str]:
+    """Validate that all app IDs reference existing apps.
+
+    Args:
+        app_ids: List of app IDs to validate
+        repo: Repository instance for database access
+        field_name: Name of the field (for error messages)
+
+    Returns:
+        List of missing app IDs (empty if all exist)
+    """
+    if not app_ids:
+        return []
+
+    missing = []
+    for app_id in app_ids:
+        app_def = repo.get_app_definition_by_app_id(app_id)
+        if not app_def:
+            missing.append(app_id)
+
+    return missing
+
+
 def _get_session(repo: Repository = Depends(get_repository)) -> Session:
     """Get SQLAlchemy session from repository."""
     return repo.session
@@ -59,6 +86,7 @@ def _get_session(repo: Repository = Depends(get_repository)) -> Session:
 async def create_dual_control_task(
     request: CreateDualControlTaskRequest,
     session: Session = Depends(_get_session),
+    repo: Repository = Depends(get_repository),
 ) -> DualControlTaskResponse:
     """Create a new dual-control task definition.
 
@@ -67,6 +95,8 @@ async def create_dual_control_task(
     - User configuration (customer with device access)
     - Required coordination handoffs
     - Goal states for both parties
+
+    Validates that all referenced apps exist in the App Studio.
     """
     # Check for duplicate task_id
     existing = session.query(DualControlTaskModel).filter(
@@ -76,6 +106,19 @@ async def create_dual_control_task(
         raise HTTPException(
             status_code=409,
             detail=f"Dual-control task with ID '{request.task_id}' already exists",
+        )
+
+    # Validate that all referenced apps exist
+    all_apps = list(set(request.agent_apps + request.user_apps))
+    missing_apps = _validate_apps_exist(all_apps, repo, "agent_apps/user_apps")
+    if missing_apps:
+        raise HTTPException(
+            status_code=400,
+            detail={
+                "code": "APPS_NOT_FOUND",
+                "message": f"The following apps do not exist: {', '.join(missing_apps)}. Please create them in App Studio first.",
+                "missing_apps": missing_apps,
+            },
         )
 
     # Create task model
@@ -276,13 +319,36 @@ async def update_dual_control_task(
     task_id: str,
     request: UpdateDualControlTaskRequest,
     session: Session = Depends(_get_session),
+    repo: Repository = Depends(get_repository),
 ) -> DualControlTaskResponse:
-    """Update a dual-control task definition."""
+    """Update a dual-control task definition.
+
+    Validates that any updated app references exist in the App Studio.
+    """
     task = session.query(DualControlTaskModel).filter(
         DualControlTaskModel.task_id == task_id
     ).first()
     if not task:
         raise HTTPException(status_code=404, detail=f"Dual-control task '{task_id}' not found")
+
+    # Validate updated apps if provided
+    apps_to_validate = []
+    if request.agent_apps is not None:
+        apps_to_validate.extend(request.agent_apps)
+    if request.user_apps is not None:
+        apps_to_validate.extend(request.user_apps)
+
+    if apps_to_validate:
+        missing_apps = _validate_apps_exist(list(set(apps_to_validate)), repo, "agent_apps/user_apps")
+        if missing_apps:
+            raise HTTPException(
+                status_code=400,
+                detail={
+                    "code": "APPS_NOT_FOUND",
+                    "message": f"The following apps do not exist: {', '.join(missing_apps)}. Please create them in App Studio first.",
+                    "missing_apps": missing_apps,
+                },
+            )
 
     # Apply updates
     if request.name is not None:
