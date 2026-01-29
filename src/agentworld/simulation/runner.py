@@ -11,6 +11,7 @@ from agentworld.core.models import Message, SimulationConfig, SimulationStatus, 
 from agentworld.core.exceptions import SimulationError
 from agentworld.goals.types import GoalSpec, GoalEvaluationResult
 from agentworld.goals.evaluator import GoalEvaluator
+from agentworld.tasks.dual_control import CoordinationMetrics, DualControlTaskDefinition
 from agentworld.agents.agent import Agent
 from agentworld.persistence.repository import Repository
 from agentworld.persistence.database import init_db
@@ -29,6 +30,7 @@ from agentworld.apps.manager import SimulationAppManager
 
 if TYPE_CHECKING:
     from agentworld.agents.external import InjectedAgentManager
+    from agentworld.tasks.coordination import CoordinationTracker
 
 logger = logging.getLogger(__name__)
 
@@ -81,6 +83,9 @@ class Simulation:
     _output_log: list[dict[str, Any]] = field(default_factory=list, repr=False)
     _goal_achieved: bool = field(default=False, repr=False)
     _goal_achieved_step: int | None = field(default=None, repr=False)
+
+    # Dual-control coordination tracking (ADR-020.1)
+    _coordination_tracker: "CoordinationTracker | None" = field(default=None, repr=False)
 
     @classmethod
     def from_config(cls, config: SimulationConfig) -> "Simulation":
@@ -760,6 +765,9 @@ class Simulation:
                 step=self.current_step,
             )
 
+            # Track agent message for coordination detection (ADR-020.1)
+            self._track_agent_message(agent.id, message.content)
+
             # Process app actions in message (per ADR-017)
             if self._app_manager is not None:
                 cleaned_content, execution_results = await self._app_manager.process_message(
@@ -778,7 +786,14 @@ class Simulation:
                             params=result.action.params,
                             result=result.result.data if hasattr(result.result, 'data') else None,
                         )
+                        # Track app action for coordination completion (ADR-020.1)
                         if result.result.success:
+                            self._track_app_action(
+                                agent_id=agent.id,
+                                app_id=result.action.app_id,
+                                action_name=result.action.action,
+                                params=result.action.params,
+                            )
                             logger.info(
                                 f"App action {result.action.app_id}.{result.action.action} "
                                 f"succeeded for {agent.name}"
@@ -908,6 +923,9 @@ class Simulation:
         # Apply all actions atomically
         async def commit_message(agent_id: str, message: Message) -> Message:
             """Commit a message to the simulation state."""
+            # Track agent message for coordination detection (ADR-020.1)
+            self._track_agent_message(agent_id, message.content)
+
             # Process app actions in message (per ADR-017)
             if self._app_manager is not None:
                 cleaned_content, execution_results = await self._app_manager.process_message(
@@ -925,7 +943,14 @@ class Simulation:
                             params=exec_result.action.params,
                             result=exec_result.result.data if hasattr(exec_result.result, 'data') else None,
                         )
+                        # Track app action for coordination completion (ADR-020.1)
                         if exec_result.result.success:
+                            self._track_app_action(
+                                agent_id=agent_id,
+                                app_id=exec_result.action.app_id,
+                                action_name=exec_result.action.action,
+                                params=exec_result.action.params,
+                            )
                             logger.info(
                                 f"App action {exec_result.action.app_id}.{exec_result.action.action} "
                                 f"succeeded for agent {agent_id}"
@@ -1089,6 +1114,111 @@ class Simulation:
         """Get the step at which goal was achieved."""
         return self._goal_achieved_step
 
+    def _initialize_coordination_tracker(self) -> None:
+        """Initialize coordination tracker for dual-control tasks.
+
+        Called when simulation has a task with required_handoffs.
+        """
+        if self._coordination_tracker is not None:
+            return  # Already initialized
+
+        # Check if task has required_handoffs (dual-control task)
+        task = getattr(self.config, 'task', None) if self.config else None
+        if task is None:
+            return
+
+        # Check if it's a DualControlTaskDefinition with required_handoffs
+        required_handoffs = getattr(task, 'required_handoffs', None)
+        if not required_handoffs:
+            return
+
+        # Import here to avoid circular imports
+        from agentworld.tasks.coordination import CoordinationTracker
+
+        self._coordination_tracker = CoordinationTracker(
+            task=task,
+            trial_id=self.id,
+        )
+
+        # Set up agent roles from simulation agents
+        for agent in self.agents:
+            role = getattr(agent, 'role', None)
+            if role:
+                self._coordination_tracker.set_agent_role(agent.id, role)
+
+        logger.info(
+            f"Initialized coordination tracker for task {task.task_id} "
+            f"with {len(required_handoffs)} required handoffs"
+        )
+
+    def get_coordination_metrics(self) -> CoordinationMetrics | None:
+        """Get coordination metrics from the tracker.
+
+        Returns:
+            CoordinationMetrics if tracker is active, None otherwise
+        """
+        if self._coordination_tracker is not None:
+            return self._coordination_tracker.get_metrics()
+        return None
+
+    def _track_agent_message(self, agent_id: str, message_text: str) -> None:
+        """Track an agent message for coordination detection.
+
+        Args:
+            agent_id: ID of the agent sending the message
+            message_text: Content of the message
+        """
+        if self._coordination_tracker is None:
+            return
+
+        # Only track messages from agents with a role
+        agent = self.get_agent(agent_id)
+        if agent is None:
+            return
+
+        self._coordination_tracker.on_agent_message(
+            agent_id=agent_id,
+            message_text=message_text,
+            turn_number=self.current_step,
+        )
+
+    def _track_app_action(
+        self,
+        agent_id: str,
+        app_id: str,
+        action_name: str,
+        params: dict[str, Any],
+    ) -> None:
+        """Track an app action for coordination completion.
+
+        Args:
+            agent_id: ID of the agent performing the action
+            app_id: ID of the app
+            action_name: Name of the action
+            params: Action parameters
+        """
+        if self._coordination_tracker is None:
+            return
+
+        event = self._coordination_tracker.on_app_action(
+            agent_id=agent_id,
+            app_id=app_id,
+            action_name=action_name,
+            params=params,
+            turn_number=self.current_step,
+        )
+
+        # If a handoff was completed, log it
+        if event and event.handoff_successful:
+            self.log_handoff(
+                handoff_id=event.matched_handoff_id or event.event_id,
+                from_agent=event.instructor_id,
+                to_agent=event.actor_id or agent_id,
+                success=True,
+                instruction=event.instruction_text,
+                action_taken=event.action_taken or action_name,
+            )
+
     async def run(self, steps: int | None = None) -> list[Message]:
         """Run the simulation for multiple steps.
 
@@ -1109,6 +1239,9 @@ class Simulation:
         # Initialize apps if not already done (per ADR-017)
         if self._app_manager is None and self.config is not None:
             await self.initialize_apps()
+
+        # Initialize coordination tracker for dual-control tasks (ADR-020.1)
+        self._initialize_coordination_tracker()
 
         # Plugin hook: simulation start (per ADR-014)
         PluginHooks.on_simulation_start(self)
@@ -1161,6 +1294,18 @@ class Simulation:
                 "termination_mode": self.config.termination_mode.value if hasattr(self.config.termination_mode, 'value') else self.config.termination_mode,
             }
 
+        # Get coordination info if available (ADR-020.1)
+        coordination_info = None
+        if self._coordination_tracker is not None:
+            metrics = self._coordination_tracker.get_metrics()
+            coordination_info = {
+                "total_handoffs_required": metrics.total_handoffs_required,
+                "handoffs_completed": metrics.handoffs_completed,
+                "coordination_success_rate": metrics.coordination_success_rate,
+                "avg_instruction_to_action_turns": metrics.avg_instruction_to_action_turns,
+                "pending_instructions": len(self._coordination_tracker.get_pending_instructions()),
+            }
+
         return {
             "id": self.id,
             "name": self.name,
@@ -1174,6 +1319,7 @@ class Simulation:
             "topology": topology_info,
             "apps": apps_info,
             "goal": goal_info,
+            "coordination": coordination_info,
         }
 
     def __repr__(self) -> str:
