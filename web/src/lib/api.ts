@@ -72,6 +72,8 @@ export interface Simulation {
   task_id?: string
   /** Goal-based termination info (ADR-020.1) */
   goal?: GoalProgress
+  /** Episode tracking for environment mode */
+  episode?: EpisodeState
 }
 
 export interface Agent {
@@ -332,6 +334,108 @@ export interface SoloDualComparisonResult {
   computed_at: string | null
 }
 
+// ==========================================================================
+// Environment Semantics Types (Gymnasium-style)
+// ==========================================================================
+
+/** Configuration for environment behavior */
+export interface EnvironmentConfig {
+  /** Maximum steps per episode before truncation */
+  max_steps_per_episode: number
+  /** Reward calculation type */
+  reward_type: 'per_step' | 'completion' | 'custom'
+  /** Whether the app supports episode reset */
+  supports_reset: boolean
+}
+
+/** Episode tracking state */
+export interface EpisodeState {
+  episode_id: string
+  episode_step_count: number
+  cumulative_reward: number
+  terminated: boolean
+  truncated: boolean
+}
+
+/** State snapshot at a point in time */
+export interface StateSnapshot {
+  step: number
+  timestamp: string
+  state: Record<string, unknown>
+  action: string | null
+  params: Record<string, unknown> | null
+  reward: number
+}
+
+/** Complete episode history for replay/analysis */
+export interface EpisodeHistory {
+  episode_id: string
+  started_at: string
+  ended_at: string | null
+  snapshots: StateSnapshot[]
+  terminated: boolean
+  truncated: boolean
+  total_reward: number
+  step_count: number
+}
+
+/** Request to reset environment for new episode */
+export interface EnvResetRequest {
+  agents: string[]
+  config?: Record<string, unknown>
+  seed?: number
+  max_steps?: number
+}
+
+/** Response from environment reset */
+export interface EnvResetResponse {
+  episode_id: string
+  observation: Record<string, unknown>
+  info: Record<string, unknown>
+}
+
+/** Request to execute a step in the environment */
+export interface EnvStepRequest {
+  agent_id: string
+  action: string
+  params: Record<string, unknown>
+}
+
+/** Response from environment step (Gymnasium-style) */
+export interface EnvStepResponse {
+  observation: Record<string, unknown>
+  reward: number
+  terminated: boolean
+  truncated: boolean
+  info: Record<string, unknown>
+}
+
+/** Environment status */
+export interface EnvStatus {
+  active: boolean
+  episode_id: string | null
+  step_count: number
+  max_steps: number
+  cumulative_reward: number
+  terminated: boolean
+  truncated: boolean
+  completed_episodes: number
+}
+
+/** Trajectory item for RL training */
+export interface TrajectoryItem {
+  state: Record<string, unknown>
+  action: string | null
+  reward: number
+}
+
+/** Trajectory response */
+export interface TrajectoryResponse {
+  episode_id: string
+  trajectory: TrajectoryItem[]
+  total_reward: number
+}
+
 export interface AppDefinition {
   id: string
   app_id: string
@@ -353,6 +457,8 @@ export interface AppDefinition {
   allowed_roles?: AgentRole[]
   /** State management type */
   state_type?: StateType
+  /** Environment configuration for Gymnasium-style semantics */
+  environment_config?: EnvironmentConfig
 }
 
 export interface AppDefinitionCreate {
@@ -1144,5 +1250,71 @@ export const api = {
       method: 'POST',
       body: data,
     })
+  },
+
+  // ==========================================================================
+  // Environment Semantics (Gymnasium-style)
+  // ==========================================================================
+
+  /** Reset an app environment for a new episode */
+  envReset: async (simulationId: string, appId: string, data: EnvResetRequest) => {
+    return request<EnvResetResponse>(
+      `/simulations/${simulationId}/apps/${appId}/env/reset`,
+      { method: 'POST', body: data }
+    )
+  },
+
+  /** Execute a step in the environment */
+  envStep: async (simulationId: string, appId: string, data: EnvStepRequest) => {
+    return request<EnvStepResponse>(
+      `/simulations/${simulationId}/apps/${appId}/env/step`,
+      { method: 'POST', body: data }
+    )
+  },
+
+  /** Close the environment and finalize episode history */
+  envClose: async (simulationId: string, appId: string) => {
+    return request<{ status: string; episode_count: number }>(
+      `/simulations/${simulationId}/apps/${appId}/env/close`,
+      { method: 'POST' }
+    )
+  },
+
+  /** Get current environment status */
+  envStatus: async (simulationId: string, appId: string) => {
+    return request<EnvStatus>(
+      `/simulations/${simulationId}/apps/${appId}/env/status`
+    )
+  },
+
+  /** Mark the current episode as terminated */
+  envMarkTerminated: async (simulationId: string, appId: string, terminated: boolean = true) => {
+    return request<{ status: string; episode_id: string; terminated: boolean }>(
+      `/simulations/${simulationId}/apps/${appId}/env/mark-terminated`,
+      { method: 'POST', body: { terminated } }
+    )
+  },
+
+  /** List all episodes for an app environment */
+  listEpisodes: async (simulationId: string, appId: string, includeCurrent: boolean = true) => {
+    const params = new URLSearchParams()
+    params.set('include_current', includeCurrent.toString())
+    return request<{ episodes: EpisodeHistory[]; total: number }>(
+      `/simulations/${simulationId}/apps/${appId}/episodes?${params.toString()}`
+    )
+  },
+
+  /** Get detailed history for a specific episode */
+  getEpisodeHistory: async (simulationId: string, appId: string, episodeId: string) => {
+    return request<EpisodeHistory>(
+      `/simulations/${simulationId}/apps/${appId}/episodes/${episodeId}`
+    )
+  },
+
+  /** Get trajectory for RL training */
+  getEpisodeTrajectory: async (simulationId: string, appId: string, episodeId: string) => {
+    return request<TrajectoryResponse>(
+      `/simulations/${simulationId}/apps/${appId}/episodes/${episodeId}/trajectory`
+    )
   },
 }
