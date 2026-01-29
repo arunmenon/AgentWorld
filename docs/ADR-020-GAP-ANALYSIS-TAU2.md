@@ -21,10 +21,11 @@ This document now tracks the **integration roadmap**.
 │   ├── SemanticMatcher, InstructionTemplate                                   │
 │   └── ToolType (READ/WRITE), AppAccessType                                   │
 │                                                                              │
-│   🔌 INTEGRATION IN PROGRESS                                                 │
+│   🔌 INTEGRATION COMPLETE                                                    │
 │   ├── Simulation Runner ↔ CoordinationTracker (DONE)                         │
 │   ├── GoalEvaluator reads handoff_log (DONE)                                 │
-│   └── UX components need real data wiring                                    │
+│   ├── Coordination events persisted to database (DONE)                       │
+│   └── UX fetches real metrics via API (DONE)                                 │
 │                                                                              │
 │   ❌ NOT YET IMPLEMENTED                                                     │
 │   ├── Gymnasium RL Interface                                                 │
@@ -43,7 +44,7 @@ This document now tracks the **integration roadmap**.
 | DualControlTaskDefinition | ✅ | ✅ | ⚠️ | ✅ | ❌ | ❌ |
 | DualControlAgentEnv | ✅ | ✅ | ❌ | ❌ | ❌ | ❌ |
 | DualControlUserEnv | ✅ | ✅ | ❌ | ❌ | ❌ | ❌ |
-| CoordinationTracker | ✅ | ✅ | ✅ | ⚠️ | ❌ | ❌ |
+| CoordinationTracker | ✅ | ✅ | ✅ | ✅ | ❌ | ❌ |
 | CoordinationHandoff | ✅ | ✅ | ✅ | ✅ | ❌ | ❌ |
 | SemanticMatcher | ✅ | ✅ | ❌ | ❌ | ❌ | ❌ |
 | InstructionTemplate | ✅ | ✅ | ✅ | ✅ | ❌ | ❌ |
@@ -229,10 +230,11 @@ _track_app_action(agent_id, app_id, action_name, params)
 - [x] Successful handoffs populate _handoff_log
 - [x] get_coordination_metrics() method available
 
-### Phase 2: UX Real Data Connection (IN PROGRESS)
-- [ ] `GET /api/v1/simulations/{id}/coordination-metrics` endpoint
-- [ ] CoordinationPanel fetches real metrics
-- [ ] Remove hardcoded estimates in SimulationDetail.tsx
+### Phase 2: UX Real Data Connection ✅ COMPLETE
+- [x] `GET /api/v1/simulations/{id}/coordination-metrics` endpoint
+- [x] CoordinationPanel fetches real metrics via useQuery
+- [x] Remove hardcoded estimates in SimulationDetail.tsx
+- [x] Coordination events persisted to database via _persist_coordination_event()
 
 ### Phase 3: Gym Environment Integration
 - [ ] Gym environments execute real app actions
@@ -264,7 +266,7 @@ _track_app_action(agent_id, app_id, action_name, params)
 | User Instruction | ✅ | ✅ | Implemented |
 | User Tools | ✅ | ✅ | Implemented |
 | Tool READ/WRITE Types | ✅ | ✅ | Implemented |
-| Coordination Tracking | ✅ | ✅ | **Wired into runner** |
+| Coordination Tracking | ✅ | ✅ | **Fully integrated (runner + API + UX)** |
 | Goal-based Termination | ✅ | ✅ | Integrated |
 | Gymnasium RL Interface | ✅ | ⚠️ | Structure only |
 | Compositional Task Gen | ✅ | ✅ | Not exported |
@@ -275,13 +277,20 @@ _track_app_action(agent_id, app_id, action_name, params)
 
 ## 9. Conclusion
 
-ADR-020.1 classes are **fully implemented**. As of 2026-01-29, the **CoordinationTracker is wired into the simulation runner**, enabling:
+ADR-020.1 classes are **fully implemented**. As of 2026-01-29:
 
+**Phase 1 ✅ CoordinationTracker wired into simulation runner:**
 1. Automatic detection of agent instructions matching required handoffs
 2. Tracking when users complete expected actions
 3. Populating `_handoff_log` for goal evaluation
 4. Coordination metrics available via `get_coordination_metrics()`
 
-**Next priority:** Wire UX to real coordination data (remove hardcoded estimates).
+**Phase 2 ✅ UX connected to real coordination data:**
+1. Coordination events persisted to database via `_persist_coordination_event()`
+2. `GET /simulations/{id}/coordination-metrics` API endpoint
+3. Frontend fetches real metrics (no more hardcoded estimates)
+4. CoordinationPanel displays live data with polling during simulation
+
+**Next priority:** Gym environment integration (Phase 3) - execute real app actions.
 
 The -25 point performance drop when agents shift from solo to dual-control mode can now be measured once the full dual-control simulation flow is exercised.
