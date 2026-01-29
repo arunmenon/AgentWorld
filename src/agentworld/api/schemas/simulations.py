@@ -1,9 +1,40 @@
 """Simulation API schemas."""
 
 from datetime import datetime
-from typing import Any, Optional
+from typing import Any, Literal, Optional
 
 from pydantic import BaseModel, Field
+
+
+class GoalConditionResponse(BaseModel):
+    """Goal condition in response."""
+
+    id: Optional[str] = None
+    goal_type: str
+    description: str
+    app_id: Optional[str] = None
+    field_path: Optional[str] = None
+    operator: str = "equals"
+    expected_value: Any = None
+    handoff_id: Optional[str] = None
+    required_phrase: Optional[str] = None
+
+
+class GoalSpecResponse(BaseModel):
+    """Goal specification in response."""
+
+    conditions: list[GoalConditionResponse] = []
+    success_mode: Literal["all", "any"] = "all"
+    description: str = ""
+
+
+class GoalProgressResponse(BaseModel):
+    """Goal progress information."""
+
+    goal_spec: Optional[GoalSpecResponse] = None
+    goal_achieved: bool = False
+    goal_achieved_step: Optional[int] = None
+    termination_mode: str = "max_steps"
 
 
 class SimulationResponse(BaseModel):
@@ -23,6 +54,8 @@ class SimulationResponse(BaseModel):
     progress_percent: Optional[float] = None
     # τ²-bench: Task reference for evaluation runs
     task_id: Optional[str] = None
+    # Goal-based termination (ADR-020.1)
+    goal: Optional[GoalProgressResponse] = None
 
     class Config:
         from_attributes = True
@@ -67,6 +100,11 @@ class CreateSimulationRequest(BaseModel):
     task_id: Optional[str] = Field(
         default=None,
         description="Dual-control task ID for τ²-bench evaluation. When set, simulation runs as a task trial."
+    )
+    # Goal-based termination (ADR-020.1)
+    termination_mode: Literal["max_steps", "goal", "hybrid"] = Field(
+        default="max_steps",
+        description="How simulation determines when to stop. 'goal' stops when goal conditions are met."
     )
 
 

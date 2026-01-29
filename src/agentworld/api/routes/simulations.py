@@ -7,9 +7,11 @@ from typing import Optional
 
 from fastapi import APIRouter, HTTPException, Query
 
-from agentworld.core.models import SimulationStatus, SimulationConfig, AgentConfig
+from agentworld.core.models import SimulationStatus, SimulationConfig, AgentConfig, TerminationMode
 from agentworld.persistence.database import init_db
 from agentworld.persistence.repository import Repository
+from agentworld.goals.types import GoalSpec
+from agentworld.persistence.models import DualControlTaskModel
 from agentworld.api.schemas.simulations import (
     SimulationResponse,
     SimulationListResponse,
@@ -19,6 +21,9 @@ from agentworld.api.schemas.simulations import (
     InjectRequest,
     InjectResponse,
     SimulationControlResponse,
+    GoalProgressResponse,
+    GoalSpecResponse,
+    GoalConditionResponse,
 )
 from agentworld.api.schemas.injection import (
     InjectAgentRequest,
@@ -53,6 +58,26 @@ def simulation_to_response(sim: dict, repo: Repository) -> SimulationResponse:
     if sim.get("total_steps") and sim.get("total_steps") > 0:
         progress = (sim.get("current_step", 0) / sim["total_steps"]) * 100
 
+    # Parse goal info from config if present
+    goal_response = None
+    config_data = sim.get("config") or {}
+    goal_spec_data = config_data.get("goal_spec")
+    if goal_spec_data:
+        conditions = [
+            GoalConditionResponse(**c) if isinstance(c, dict) else c
+            for c in goal_spec_data.get("conditions", [])
+        ]
+        goal_response = GoalProgressResponse(
+            goal_spec=GoalSpecResponse(
+                conditions=conditions,
+                success_mode=goal_spec_data.get("success_mode", "all"),
+                description=goal_spec_data.get("description", ""),
+            ),
+            goal_achieved=config_data.get("goal_achieved", False),
+            goal_achieved_step=config_data.get("goal_achieved_step"),
+            termination_mode=config_data.get("termination_mode", "max_steps"),
+        )
+
     return SimulationResponse(
         id=sim["id"],
         name=sim["name"],
@@ -66,6 +91,8 @@ def simulation_to_response(sim: dict, repo: Repository) -> SimulationResponse:
         created_at=sim.get("created_at"),
         updated_at=sim.get("updated_at"),
         progress_percent=progress,
+        task_id=config_data.get("task_id"),
+        goal=goal_response,
     )
 
 
@@ -159,6 +186,60 @@ async def create_simulation(request: CreateSimulationRequest):
             for app in request.apps
         ]
 
+    # Parse termination mode
+    termination_mode = TerminationMode(request.termination_mode)
+
+    # If task_id provided and goal/hybrid mode, inherit goal_spec from task
+    goal_spec = None
+    task_id = request.task_id
+    if task_id and termination_mode in (TerminationMode.GOAL, TerminationMode.HYBRID):
+        # Try to load task and get its goal spec
+        try:
+            # Use SQLAlchemy session to fetch the dual control task
+            session = repo.session
+            task_model = session.query(DualControlTaskModel).filter(
+                DualControlTaskModel.task_id == task_id
+            ).first()
+            task = task_model.to_dict() if task_model else None
+            if task:
+                # Check for new goal_conditions format in simulation_config first
+                sim_config = task.get("simulation_config", {})
+                goal_conditions = sim_config.get("goal_conditions", [])
+
+                if goal_conditions:
+                    # Use new structured goal conditions format
+                    goal_spec = GoalSpec.from_dict({
+                        "conditions": goal_conditions,
+                        "success_mode": sim_config.get("success_mode", "all"),
+                        "description": task.get("description", ""),
+                    })
+                    logger.info(f"Loaded goal_spec from task {task_id} (new format): {len(goal_spec.conditions)} conditions")
+                else:
+                    # Fall back to legacy goal_state format
+                    user_goal = task.get("user_goal_state", {})
+                    agent_goal = task.get("agent_goal_state", {})
+                    combined_goals = {**user_goal, **agent_goal}
+                    if combined_goals:
+                        # Parse legacy format - handle both "app_id.field" and nested dict formats
+                        parsed_goals: dict[str, dict] = {}
+                        for key, value in combined_goals.items():
+                            if "." in key:
+                                app_id, field = key.split(".", 1)
+                                if app_id not in parsed_goals:
+                                    parsed_goals[app_id] = {}
+                                parsed_goals[app_id][field] = value
+                            elif isinstance(value, dict):
+                                parsed_goals[key] = value
+
+                        if parsed_goals:
+                            goal_spec = GoalSpec.from_legacy_goal_state(
+                                parsed_goals,
+                                description=task.get("description", ""),
+                            )
+                            logger.info(f"Loaded goal_spec from task {task_id} (legacy format): {len(goal_spec.conditions)} conditions")
+        except Exception as e:
+            logger.warning(f"Failed to load task {task_id} for goal spec: {e}")
+
     config = SimulationConfig(
         name=request.name,
         agents=agent_configs,
@@ -166,6 +247,9 @@ async def create_simulation(request: CreateSimulationRequest):
         initial_prompt=request.initial_prompt,
         model=request.model,
         apps=apps_config,
+        termination_mode=termination_mode,
+        goal_spec=goal_spec,
+        task_id=task_id,
     )
 
     # Create simulation using runner
