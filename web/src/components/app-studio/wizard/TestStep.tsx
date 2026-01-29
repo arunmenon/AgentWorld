@@ -1,15 +1,16 @@
 import { useState } from 'react'
-import { Play, RotateCcw, CheckCircle, XCircle, ChevronDown, ChevronUp, Loader2 } from 'lucide-react'
+import { Play, RotateCcw, CheckCircle, XCircle, ChevronDown, ChevronUp, Loader2, FlaskConical } from 'lucide-react'
 import { Button, Card, Input, Label, Badge } from '@/components/ui'
 import { cn } from '@/lib/utils'
 import { api } from '@/lib/api'
-import type { ActionDefinition, ParamSpec, StateField } from '@/lib/api'
+import type { ActionDefinition, ParamSpec, StateField, EnvironmentConfig } from '@/lib/api'
 
 interface TestStepProps {
   actions: ActionDefinition[]
   stateSchema: StateField[]
   initialConfig: Record<string, unknown>
   definitionId?: string
+  environmentConfig?: EnvironmentConfig
 }
 
 interface TestAgent {
@@ -73,7 +74,7 @@ function buildStateForApi(agents: TestAgent[]): {
   return { per_agent, shared: {} }
 }
 
-export function TestStep({ actions, stateSchema, definitionId }: TestStepProps) {
+export function TestStep({ actions, stateSchema, definitionId, environmentConfig }: TestStepProps) {
   // Test agents
   const [agents, setAgents] = useState<TestAgent[]>(() => [
     { id: 'alice', name: 'Alice', state: initializeAgentState(stateSchema) },
@@ -94,6 +95,16 @@ export function TestStep({ actions, stateSchema, definitionId }: TestStepProps) 
     error?: string
   } | null>(null)
   const [isExecuting, setIsExecuting] = useState(false)
+
+  // Episode mode state
+  const [episodeMode, setEpisodeMode] = useState(false)
+  const [currentEpisodeId, setCurrentEpisodeId] = useState<string | null>(null)
+  const [episodeStepCount, setEpisodeStepCount] = useState(0)
+  const [cumulativeReward, setCumulativeReward] = useState(0)
+  const [episodeTerminated, setEpisodeTerminated] = useState(false)
+  const [episodeTruncated, setEpisodeTruncated] = useState(false)
+
+  const maxSteps = environmentConfig?.max_steps_per_episode ?? 100
 
   const selectedAgent = agents.find((a) => a.id === selectedAgentId)
   const selectedAction = actions.find((a) => a.name === selectedActionName)
@@ -174,6 +185,20 @@ export function TestStep({ actions, stateSchema, definitionId }: TestStepProps) 
         stateChanges,
       }
       setExecutionLog((prev) => [logEntry, ...prev])
+
+      // Update episode metrics if in episode mode
+      if (episodeMode) {
+        const newStepCount = episodeStepCount + 1
+        setEpisodeStepCount(newStepCount)
+
+        const reward = calculateReward(response.success)
+        setCumulativeReward((prev) => prev + reward)
+
+        // Check for truncation
+        if (newStepCount >= maxSteps) {
+          setEpisodeTruncated(true)
+        }
+      }
     } catch (err) {
       const errorMsg = err instanceof Error ? err.message : 'Unknown error'
       setLastResult({
@@ -196,6 +221,45 @@ export function TestStep({ actions, stateSchema, definitionId }: TestStepProps) 
     setExecutionLog([])
     setLastResult(null)
     setParamValues({})
+
+    // Reset episode state
+    if (episodeMode) {
+      setCurrentEpisodeId(`ep_${Date.now().toString(36)}`)
+      setEpisodeStepCount(0)
+      setCumulativeReward(0)
+      setEpisodeTerminated(false)
+      setEpisodeTruncated(false)
+    }
+  }
+
+  // Toggle episode mode
+  const handleEpisodeModeToggle = (enabled: boolean) => {
+    setEpisodeMode(enabled)
+    if (enabled) {
+      // Start a new episode
+      setCurrentEpisodeId(`ep_${Date.now().toString(36)}`)
+      setEpisodeStepCount(0)
+      setCumulativeReward(0)
+      setEpisodeTerminated(false)
+      setEpisodeTruncated(false)
+    } else {
+      setCurrentEpisodeId(null)
+    }
+  }
+
+  // Calculate reward for a step (simplified version)
+  const calculateReward = (success: boolean): number => {
+    const rewardType = environmentConfig?.reward_type ?? 'per_step'
+    switch (rewardType) {
+      case 'per_step':
+        return success ? -0.01 : -0.11 // Small penalty, larger if failed
+      case 'completion':
+        return episodeTerminated ? 1.0 : 0.0
+      case 'custom':
+        return 0.0 // Would be returned from action
+      default:
+        return -0.01
+    }
   }
 
   if (actions.length === 0) {
@@ -233,11 +297,80 @@ export function TestStep({ actions, stateSchema, definitionId }: TestStepProps) 
             Execute actions and see results in real-time
           </p>
         </div>
-        <Button variant="secondary" onClick={handleReset}>
-          <RotateCcw className="h-4 w-4 mr-2" />
-          Reset
-        </Button>
+        <div className="flex items-center gap-4">
+          {/* Episode Mode Toggle */}
+          <label className="flex items-center gap-2 cursor-pointer">
+            <input
+              type="checkbox"
+              id="episode-mode"
+              checked={episodeMode}
+              onChange={(e) => handleEpisodeModeToggle(e.target.checked)}
+              className="h-4 w-4 accent-primary rounded"
+            />
+            <span className="flex items-center gap-1 text-sm font-medium">
+              <FlaskConical className="h-4 w-4" />
+              Episode Mode
+            </span>
+          </label>
+          <Button variant="secondary" onClick={handleReset}>
+            <RotateCcw className="h-4 w-4 mr-2" />
+            {episodeMode ? 'Reset Episode' : 'Reset'}
+          </Button>
+        </div>
       </div>
+
+      {/* Episode Metrics Panel */}
+      {episodeMode && (
+        <Card className="p-4">
+          <div className="flex items-center gap-2 mb-3">
+            <FlaskConical className="h-5 w-5 text-primary" />
+            <h3 className="font-semibold">Episode Metrics</h3>
+          </div>
+          <div className="grid grid-cols-2 md:grid-cols-5 gap-4 text-sm">
+            <div>
+              <div className="text-foreground-muted">Episode ID</div>
+              <div className="font-mono">{currentEpisodeId ?? '—'}</div>
+            </div>
+            <div>
+              <div className="text-foreground-muted">Steps</div>
+              <div>
+                {episodeStepCount} / {maxSteps}
+              </div>
+            </div>
+            <div>
+              <div className="text-foreground-muted">Cumulative Reward</div>
+              <div className={cn(
+                'font-mono',
+                cumulativeReward >= 0 ? 'text-success' : 'text-error'
+              )}>
+                {cumulativeReward.toFixed(3)}
+              </div>
+            </div>
+            <div>
+              <div className="text-foreground-muted">Status</div>
+              <div>
+                {episodeTerminated ? (
+                  <Badge variant="outline" className="text-success border-success">
+                    ✅ Terminated
+                  </Badge>
+                ) : episodeTruncated ? (
+                  <Badge variant="outline" className="text-warning border-warning">
+                    ⏱️ Truncated
+                  </Badge>
+                ) : (
+                  <Badge variant="outline" className="text-primary border-primary">
+                    ▶️ Running
+                  </Badge>
+                )}
+              </div>
+            </div>
+            <div>
+              <div className="text-foreground-muted">Reward Type</div>
+              <div className="capitalize">{environmentConfig?.reward_type ?? 'per_step'}</div>
+            </div>
+          </div>
+        </Card>
+      )}
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Left: Execute Action */}

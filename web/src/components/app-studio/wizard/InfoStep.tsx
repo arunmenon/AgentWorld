@@ -1,7 +1,7 @@
-import { AlertCircle } from 'lucide-react'
+import { AlertCircle, FlaskConical } from 'lucide-react'
 import { Input, Textarea, Label } from '@/components/ui'
 import { cn } from '@/lib/utils'
-import type { AppCategory, StateField } from '@/lib/api'
+import type { AppCategory, StateField, EnvironmentConfig } from '@/lib/api'
 import {
   AccessTypeSelector,
   RoleCheckboxes,
@@ -24,6 +24,8 @@ interface AppInfoData {
   state_type?: StateType
   // State schema (τ²-bench Phase 1)
   state_schema?: StateField[]
+  // Environment configuration (Gymnasium-style)
+  environment_config?: EnvironmentConfig
 }
 
 interface ValidationErrors {
@@ -261,6 +263,115 @@ export function InfoStep({
           />
         </div>
       )}
+
+      {/* Environment Settings Section (Gymnasium-style) */}
+      <div className="space-y-4 pt-4 border-t border-border">
+        <div className="flex items-center gap-2 justify-center mb-2">
+          <FlaskConical className="h-5 w-5 text-primary" />
+          <h3 className="text-lg font-medium">Environment Settings</h3>
+        </div>
+        <p className="text-sm text-foreground-secondary text-center mb-4">
+          Configure Gymnasium-style environment behavior for RL training and evaluation
+        </p>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          {/* Max Steps per Episode */}
+          <div className="space-y-2">
+            <Label htmlFor="max_steps">Max Steps per Episode</Label>
+            <Input
+              id="max_steps"
+              type="number"
+              value={data.environment_config?.max_steps_per_episode ?? 100}
+              onChange={(e) =>
+                onChange({
+                  environment_config: {
+                    ...data.environment_config,
+                    max_steps_per_episode: parseInt(e.target.value) || 100,
+                    reward_type: data.environment_config?.reward_type ?? 'per_step',
+                    supports_reset: data.environment_config?.supports_reset ?? true,
+                  },
+                })
+              }
+              min={1}
+              max={10000}
+              className="font-mono"
+            />
+            <p className="text-xs text-foreground-muted">
+              Episode truncates after this many steps (1-10000)
+            </p>
+          </div>
+
+          {/* Reward Type */}
+          <div className="space-y-2">
+            <Label>Reward Type</Label>
+            <div className="space-y-2">
+              {([
+                { value: 'per_step', label: 'Per Step (-0.01 per step)', desc: 'Small penalty each step, encourages efficiency' },
+                { value: 'completion', label: 'Completion Only (+1 on success)', desc: 'Sparse reward only when goal is achieved' },
+                { value: 'custom', label: 'Custom (defined in actions)', desc: 'Actions return custom reward values' },
+              ] as const).map((option) => (
+                <label
+                  key={option.value}
+                  className={cn(
+                    'flex items-start gap-3 p-3 rounded-lg border cursor-pointer transition-all',
+                    (data.environment_config?.reward_type ?? 'per_step') === option.value
+                      ? 'border-primary bg-primary/5'
+                      : 'border-border hover:border-primary/40'
+                  )}
+                >
+                  <input
+                    type="radio"
+                    name="reward_type"
+                    value={option.value}
+                    checked={(data.environment_config?.reward_type ?? 'per_step') === option.value}
+                    onChange={() =>
+                      onChange({
+                        environment_config: {
+                          ...data.environment_config,
+                          reward_type: option.value,
+                          max_steps_per_episode: data.environment_config?.max_steps_per_episode ?? 100,
+                          supports_reset: data.environment_config?.supports_reset ?? true,
+                        },
+                      })
+                    }
+                    className="mt-1 accent-primary"
+                  />
+                  <div>
+                    <div className="font-medium text-sm">{option.label}</div>
+                    <div className="text-xs text-foreground-muted">{option.desc}</div>
+                  </div>
+                </label>
+              ))}
+            </div>
+          </div>
+        </div>
+
+        {/* Supports Reset Toggle */}
+        <label className="flex items-center justify-between p-3 rounded-lg border border-border cursor-pointer hover:border-primary/40 transition-all">
+          <div className="space-y-0.5">
+            <span className="text-sm font-medium">Supports Episode Reset</span>
+            <p className="text-xs text-foreground-muted">
+              Allow resetting to initial state for new episodes
+            </p>
+          </div>
+          <input
+            type="checkbox"
+            id="supports_reset"
+            checked={data.environment_config?.supports_reset ?? true}
+            onChange={(e) =>
+              onChange({
+                environment_config: {
+                  ...data.environment_config,
+                  supports_reset: e.target.checked,
+                  max_steps_per_episode: data.environment_config?.max_steps_per_episode ?? 100,
+                  reward_type: data.environment_config?.reward_type ?? 'per_step',
+                },
+              })
+            }
+            className="h-5 w-5 accent-primary rounded"
+          />
+        </label>
+      </div>
     </div>
   )
 }
