@@ -2,6 +2,9 @@
 
 This module provides the SimulationAppManager which handles the lifecycle
 of simulated apps within a simulation per ADR-017.
+
+Supports environment semantics via get_app_as_env() for Gymnasium-style
+episode management and reward tracking.
 """
 
 from __future__ import annotations
@@ -10,7 +13,7 @@ import json
 import logging
 import uuid
 from dataclasses import dataclass, field
-from typing import Any, TYPE_CHECKING
+from typing import Any, Callable, TYPE_CHECKING
 
 from agentworld.apps.base import (
     AppObservation,
@@ -22,6 +25,7 @@ from agentworld.apps.parser import parse_message, ParsedAction
 
 if TYPE_CHECKING:
     from agentworld.persistence.repository import Repository
+    from agentworld.apps.environment import AppEnvironmentWrapper
 
 logger = logging.getLogger(__name__)
 
@@ -49,6 +53,18 @@ class SimulationAppManager:
 
     Handles app lifecycle (initialization, execution, checkpointing)
     and integrates with the simulation runner.
+
+    Supports environment semantics via get_app_as_env() for Gymnasium-style
+    episode management with automatic reward tracking.
+
+    Example:
+        >>> manager = SimulationAppManager("sim_123")
+        >>> await manager.initialize_apps([{"id": "paypal"}], ["alice"], {})
+        >>>
+        >>> # Get app with environment wrapper
+        >>> env = manager.get_app_as_env("paypal", max_steps=50)
+        >>> result = await env.reset(options={"agents": ["alice"]})
+        >>> step = await env.step("alice", "get_balance", {})
     """
 
     simulation_id: str
@@ -56,6 +72,7 @@ class SimulationAppManager:
     _app_instance_ids: dict[str, str] = field(default_factory=dict)  # app_id -> instance_id
     _repository: "Repository | None" = field(default=None)
     _current_step: int = field(default=0)
+    _app_envs: dict[str, "AppEnvironmentWrapper"] = field(default_factory=dict)  # app_id -> wrapper
 
     async def initialize_apps(
         self,
@@ -520,3 +537,136 @@ class SimulationAppManager:
             lines.append("")
 
         return "\n".join(lines)
+
+    # ==========================================================================
+    # Environment Wrapper Methods
+    # ==========================================================================
+
+    def get_app_as_env(
+        self,
+        app_id: str,
+        max_steps: int = 100,
+        reward_function: Callable[[Any, dict, bool, int], float] | None = None,
+        track_history: bool = True,
+    ) -> "AppEnvironmentWrapper | None":
+        """Get app wrapped with environment semantics.
+
+        Returns an AppEnvironmentWrapper that provides Gymnasium-style
+        interface (reset, step, close) with automatic reward tracking
+        and episode history.
+
+        Args:
+            app_id: ID of the app to wrap
+            max_steps: Maximum steps per episode before truncation
+            reward_function: Optional custom reward function
+            track_history: Whether to track full state history
+
+        Returns:
+            AppEnvironmentWrapper instance or None if app not found
+
+        Example:
+            >>> env = manager.get_app_as_env("paypal", max_steps=50)
+            >>> if env:
+            ...     result = await env.reset(options={"agents": ["alice"]})
+            ...     step = await env.step("alice", "get_balance", {})
+        """
+        # Return existing wrapper if available
+        if app_id in self._app_envs:
+            return self._app_envs[app_id]
+
+        # Get underlying app
+        app = self._apps.get(app_id)
+        if app is None:
+            logger.warning(f"Cannot create env wrapper for unknown app: {app_id}")
+            return None
+
+        # Import here to avoid circular dependency
+        from agentworld.apps.environment import AppEnvironmentWrapper
+
+        # Create wrapper
+        env = AppEnvironmentWrapper(
+            app=app,
+            max_steps=max_steps,
+            reward_function=reward_function,
+            track_history=track_history,
+        )
+        self._app_envs[app_id] = env
+
+        logger.info(f"Created environment wrapper for app {app_id} (max_steps={max_steps})")
+        return env
+
+    def has_env_wrapper(self, app_id: str) -> bool:
+        """Check if an app has an active environment wrapper.
+
+        Args:
+            app_id: ID of the app to check
+
+        Returns:
+            True if wrapper exists
+        """
+        return app_id in self._app_envs
+
+    def get_all_env_wrappers(self) -> dict[str, "AppEnvironmentWrapper"]:
+        """Get all active environment wrappers.
+
+        Returns:
+            Dictionary of app_id -> AppEnvironmentWrapper
+        """
+        return self._app_envs.copy()
+
+    async def reset_all_envs(
+        self,
+        seed: int | None = None,
+        options: dict[str, Any] | None = None,
+    ) -> dict[str, dict[str, Any]]:
+        """Reset all environment-wrapped apps.
+
+        Useful for starting a new episode across all apps simultaneously.
+
+        Args:
+            seed: Optional random seed for reproducibility
+            options: Options to pass to each reset (agents, config, etc.)
+
+        Returns:
+            Dictionary of app_id -> initial observation
+        """
+        results = {}
+        options = options or {}
+
+        for app_id, env in self._app_envs.items():
+            try:
+                result = await env.reset(seed=seed, options=options)
+                results[app_id] = result.observation
+            except Exception as e:
+                logger.error(f"Failed to reset env for {app_id}: {e}")
+                results[app_id] = {"error": str(e)}
+
+        return results
+
+    def close_all_envs(self) -> None:
+        """Close all environment wrappers and finalize their history."""
+        for app_id, env in self._app_envs.items():
+            try:
+                env.close()
+            except Exception as e:
+                logger.warning(f"Error closing env for {app_id}: {e}")
+
+        self._app_envs.clear()
+        logger.info("Closed all environment wrappers")
+
+    def get_env_episode_histories(self) -> dict[str, list[dict[str, Any]]]:
+        """Get episode histories from all environment wrappers.
+
+        Returns:
+            Dictionary of app_id -> list of episode history dicts
+        """
+        histories = {}
+        for app_id, env in self._app_envs.items():
+            episodes = env.get_all_episodes()
+            histories[app_id] = [ep.to_dict() for ep in episodes]
+            # Include current episode if active
+            if env.get_episode_history():
+                current = env.get_episode_history()
+                if current and current.episode_id not in [ep.episode_id for ep in episodes]:
+                    histories[app_id].append(current.to_dict())
+        return histories

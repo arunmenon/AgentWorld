@@ -114,6 +114,19 @@ from agentworld.apps.openenv_adapter import (
     list_available_openenv_apps,
 )
 
+# Environment semantics (Gymnasium-style interface)
+from agentworld.apps.environment import (
+    StepResult,
+    ResetResult,
+    StateSnapshot,
+    EpisodeHistory,
+    EnvironmentProtocol,
+    AppEnvironmentWrapper,
+    default_reward,
+    sparse_reward,
+    action_cost_reward,
+)
+
 __all__ = [
     # Data structures
     "ParamSpec",
@@ -183,6 +196,16 @@ __all__ = [
     "OpenEnvApp",
     "create_openenv_app",
     "list_available_openenv_apps",
+    # Environment semantics (Gymnasium-style interface)
+    "StepResult",
+    "ResetResult",
+    "StateSnapshot",
+    "EpisodeHistory",
+    "EnvironmentProtocol",
+    "AppEnvironmentWrapper",
+    "default_reward",
+    "sparse_reward",
+    "action_cost_reward",
 ]
 
 # Register built-in apps

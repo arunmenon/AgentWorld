@@ -379,6 +379,9 @@ class BaseSimulatedApp(ABC):
 
     Provides default implementations for common operations while
     requiring subclasses to implement the core business logic.
+
+    Supports optional episode tracking for Gymnasium-style environment semantics.
+    See agentworld.apps.environment.AppEnvironmentWrapper for full environment support.
     """
 
     def __init__(self):
@@ -388,6 +391,32 @@ class BaseSimulatedApp(ABC):
         self._config: dict[str, Any] = {}
         self._observations: dict[str, list[AppObservation]] = {}  # agent_id -> observations
         self._action_log: list[AppActionLogEntry] = []
+        self._agent_names: dict[str, str] = {}
+        self._current_step: int = 0
+
+        # Episode tracking (optional, for environment semantics)
+        self._episode_id: str | None = None
+        self._episode_step_count: int = 0
+        self._episode_active: bool = False
+
+    # ==========================================================================
+    # Episode Tracking Properties (for environment semantics)
+    # ==========================================================================
+
+    @property
+    def episode_id(self) -> str | None:
+        """Current episode ID, or None if not in episode mode."""
+        return self._episode_id
+
+    @property
+    def episode_step_count(self) -> int:
+        """Number of steps taken in the current episode."""
+        return self._episode_step_count
+
+    @property
+    def in_episode(self) -> bool:
+        """Whether an episode is currently active."""
+        return self._episode_active
 
     @property
     @abstractmethod
@@ -609,7 +638,7 @@ class BaseSimulatedApp(ABC):
 
     def get_full_state(self) -> dict[str, Any]:
         """Get full app state for API responses."""
-        return {
+        state = {
             "app_id": self.app_id,
             "name": self.name,
             "description": self.description,
@@ -618,6 +647,74 @@ class BaseSimulatedApp(ABC):
             "config": self._config,
             "state": self._get_state_dict(),
         }
+        # Include episode info if in episode mode
+        if self._episode_active:
+            state["episode"] = {
+                "episode_id": self._episode_id,
+                "step_count": self._episode_step_count,
+                "active": self._episode_active,
+            }
+        return state
+
+    # ==========================================================================
+    # Episode Methods (for direct environment protocol support)
+    # ==========================================================================
+
+    async def env_reset(
+        self,
+        agents: list[str],
+        config: dict[str, Any] | None = None,
+        seed: int | None = None,
+    ) -> dict[str, Any]:
+        """Reset for new episode. Override for custom reset logic.
+
+        This method provides direct environment protocol support without
+        needing the AppEnvironmentWrapper. The wrapper is still preferred
+        for full Gymnasium-style interface with history tracking.
+
+        Args:
+            agents: List of agent IDs for this episode
+            config: App-specific configuration
+            seed: Optional random seed (not used by default)
+
+        Returns:
+            Initial observation dictionary
+        """
+        self._episode_id = str(uuid.uuid4())[:8]
+        self._episode_step_count = 0
+        self._episode_active = True
+
+        # Initialize the app
+        await self.initialize(
+            sim_id=f"ep_{self._episode_id}",
+            agents=agents,
+            config=config or {},
+        )
+
+        # Return initial observation
+        if agents:
+            return await self.get_agent_state(agents[0])
+        return {}
+
+    def env_close(self) -> None:
+        """End episode. Override for custom cleanup.
+
+        Call this when the episode is complete to clean up episode state.
+        """
+        self._episode_active = False
+        self._episode_id = None
+        self._episode_step_count = 0
+
+    def increment_episode_step(self) -> int:
+        """Increment and return the episode step counter.
+
+        Call this after each action execution when in episode mode.
+
+        Returns:
+            New step count
+        """
+        self._episode_step_count += 1
+        return self._episode_step_count
 
 
 # ==============================================================================
