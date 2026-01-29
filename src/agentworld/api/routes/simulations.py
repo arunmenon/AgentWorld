@@ -24,6 +24,8 @@ from agentworld.api.schemas.simulations import (
     GoalProgressResponse,
     GoalSpecResponse,
     GoalConditionResponse,
+    GenerateSimulationRequest,
+    GenerateSimulationResponse,
 )
 from agentworld.api.schemas.injection import (
     InjectAgentRequest,
@@ -122,6 +124,47 @@ async def list_simulations(
         simulations=responses,
         total=len(responses),
     )
+
+
+@router.post("/simulations/generate", response_model=GenerateSimulationResponse)
+async def generate_simulation(
+    request: GenerateSimulationRequest,
+) -> GenerateSimulationResponse:
+    """Generate a simulation configuration from natural language.
+
+    Uses an LLM to interpret the natural language description and generate
+    a complete simulation configuration with agents, personality traits, and
+    initial prompt that can be reviewed and modified.
+    """
+    import logging
+    from agentworld.simulation.ai_generator import AISimulationGenerator
+
+    logger = logging.getLogger(__name__)
+
+    try:
+        generator = AISimulationGenerator()
+        config = await generator.generate_simulation(
+            description=request.description,
+            num_agents_hint=request.num_agents,
+        )
+        return GenerateSimulationResponse(
+            success=True,
+            config=config,
+        )
+    except ValueError as e:
+        logger.warning(f"Simulation generation failed: {e}")
+        return GenerateSimulationResponse(
+            success=False,
+            config={},
+            error=str(e),
+        )
+    except Exception as e:
+        logger.error(f"Unexpected error during simulation generation: {e}")
+        return GenerateSimulationResponse(
+            success=False,
+            config={},
+            error="Failed to generate simulation. Please try again with a clearer description.",
+        )
 
 
 @router.get("/simulations/{simulation_id}", response_model=SimulationResponse)

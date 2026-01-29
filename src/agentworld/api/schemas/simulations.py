@@ -148,3 +148,36 @@ class SimulationControlResponse(BaseModel):
     simulation_id: str
     status: str
     message: str
+
+
+# ==============================================================================
+# AI Generation Schemas
+# ==============================================================================
+
+
+class GenerateSimulationRequest(BaseModel):
+    """Request to generate a simulation from natural language."""
+
+    description: str = Field(
+        ...,
+        min_length=10,
+        max_length=2000,
+        description="Natural language description of the simulation scenario"
+    )
+    num_agents: Optional[int] = Field(
+        None,
+        ge=2,
+        le=10,
+        description="Optional hint for number of agents"
+    )
+
+
+class GenerateSimulationResponse(BaseModel):
+    """Response containing generated simulation configuration."""
+
+    success: bool = Field(..., description="Whether generation succeeded")
+    config: dict[str, Any] = Field(
+        default_factory=dict,
+        description="Generated simulation configuration"
+    )
+    error: Optional[str] = Field(None, description="Error message if failed")
