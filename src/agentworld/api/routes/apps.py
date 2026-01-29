@@ -1,4 +1,8 @@
-"""API endpoints for simulated apps per ADR-017."""
+"""API endpoints for simulated apps per ADR-017.
+
+Includes environment semantics endpoints for Gymnasium-style episode
+management and reward tracking.
+"""
 
 from typing import Optional
 
@@ -16,6 +20,16 @@ from agentworld.api.schemas.apps import (
     AppActionLogEntryResponse,
     AppActionLogResponse,
     AvailableAppsResponse,
+    # Environment semantics schemas
+    EnvResetRequest,
+    EnvResetResponse,
+    EnvStepRequest,
+    EnvStepResponse,
+    StateSnapshotResponse,
+    EpisodeHistoryResponse,
+    EpisodeListResponse,
+    TrajectoryItem,
+    TrajectoryResponse,
 )
 
 
@@ -296,3 +310,396 @@ async def get_simulation_action_log(
     ]
 
     return AppActionLogResponse(actions=actions, total=len(actions))
+
+
+# ==============================================================================
+# Environment Semantics Endpoints
+# ==============================================================================
+
+# In-memory storage for environment wrappers (keyed by simulation_id:app_id)
+_env_wrappers: dict = {}
+
+
+def _get_env_key(simulation_id: str, app_id: str) -> str:
+    """Generate key for environment wrapper storage."""
+    return f"{simulation_id}:{app_id}"
+
+
+@router.post(
+    "/simulations/{simulation_id}/apps/{app_id}/env/reset",
+    response_model=EnvResetResponse,
+)
+async def reset_app_environment(
+    simulation_id: str,
+    app_id: str,
+    request: EnvResetRequest,
+):
+    """Reset an app to initial state for a new episode.
+
+    Creates or resets an environment wrapper for the specified app,
+    starting a new episode with the provided configuration.
+
+    Returns the initial observation and episode metadata.
+    """
+    from agentworld.apps.environment import AppEnvironmentWrapper
+
+    repo = get_repo()
+
+    # Check simulation exists
+    sim = repo.get_simulation(simulation_id)
+    if not sim:
+        raise HTTPException(status_code=404, detail={
+            "code": "SIMULATION_NOT_FOUND",
+            "message": f"Simulation '{simulation_id}' not found",
+        })
+
+    # Get or create app instance
+    registry = get_app_registry()
+    app = registry.get(app_id)
+    if app is None:
+        raise HTTPException(status_code=404, detail={
+            "code": "APP_NOT_FOUND",
+            "message": f"App '{app_id}' not found in registry",
+        })
+
+    # Get or create environment wrapper
+    env_key = _get_env_key(simulation_id, app_id)
+    env = _env_wrappers.get(env_key)
+
+    if env is None:
+        env = AppEnvironmentWrapper(
+            app=app,
+            max_steps=request.max_steps,
+            track_history=True,
+        )
+        _env_wrappers[env_key] = env
+    else:
+        # Update max_steps if different
+        env._max_steps = request.max_steps
+
+    # Reset the environment
+    try:
+        result = await env.reset(
+            seed=request.seed,
+            options={
+                "agents": request.agents,
+                "config": request.config,
+            },
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail={
+            "code": "RESET_FAILED",
+            "message": f"Failed to reset environment: {str(e)}",
+        })
+
+    return EnvResetResponse(
+        episode_id=result.info.get("episode_id", ""),
+        observation=result.observation,
+        info=result.info,
+    )
+
+
+@router.post(
+    "/simulations/{simulation_id}/apps/{app_id}/env/step",
+    response_model=EnvStepResponse,
+)
+async def step_app_environment(
+    simulation_id: str,
+    app_id: str,
+    request: EnvStepRequest,
+):
+    """Execute an action and return Gymnasium-style step result.
+
+    The environment must be reset before stepping. Returns the new
+    observation, reward, and episode termination status.
+    """
+    env_key = _get_env_key(simulation_id, app_id)
+    env = _env_wrappers.get(env_key)
+
+    if env is None:
+        raise HTTPException(status_code=400, detail={
+            "code": "NO_ACTIVE_EPISODE",
+            "message": "No active episode. Call /env/reset first.",
+        })
+
+    if not env.is_active:
+        raise HTTPException(status_code=400, detail={
+            "code": "EPISODE_ENDED",
+            "message": "Episode has ended. Call /env/reset to start a new one.",
+        })
+
+    try:
+        result = await env.step(
+            agent_id=request.agent_id,
+            action=request.action,
+            params=request.params,
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail={
+            "code": "STEP_FAILED",
+            "message": f"Failed to execute step: {str(e)}",
+        })
+
+    return EnvStepResponse(
+        observation=result.observation,
+        reward=result.reward,
+        terminated=result.terminated,
+        truncated=result.truncated,
+        info=result.info,
+    )
+
+
+@router.post("/simulations/{simulation_id}/apps/{app_id}/env/close")
+async def close_app_environment(simulation_id: str, app_id: str):
+    """Close the environment and finalize episode history.
+
+    This should be called when done with the current episode to
+    ensure the history is properly saved.
+    """
+    env_key = _get_env_key(simulation_id, app_id)
+    env = _env_wrappers.get(env_key)
+
+    if env is None:
+        raise HTTPException(status_code=404, detail={
+            "code": "ENV_NOT_FOUND",
+            "message": "No environment wrapper found for this app.",
+        })
+
+    env.close()
+
+    return {"status": "closed", "episode_count": env.get_episode_count()}
+
+
+@router.get(
+    "/simulations/{simulation_id}/apps/{app_id}/env/status",
+)
+async def get_env_status(simulation_id: str, app_id: str):
+    """Get current environment status.
+
+    Returns episode state including current step, cumulative reward,
+    and termination status.
+    """
+    env_key = _get_env_key(simulation_id, app_id)
+    env = _env_wrappers.get(env_key)
+
+    if env is None:
+        return {
+            "active": False,
+            "episode_id": None,
+            "step_count": 0,
+            "cumulative_reward": 0.0,
+            "terminated": False,
+            "truncated": False,
+            "completed_episodes": 0,
+        }
+
+    return {
+        "active": env.is_active,
+        "episode_id": env.episode_id,
+        "step_count": env.step_count,
+        "max_steps": env.max_steps,
+        "cumulative_reward": env.cumulative_reward,
+        "terminated": env.terminated,
+        "truncated": env.truncated,
+        "completed_episodes": env.get_episode_count(),
+    }
+
+
+@router.get(
+    "/simulations/{simulation_id}/apps/{app_id}/episodes",
+    response_model=EpisodeListResponse,
+)
+async def list_app_episodes(
+    simulation_id: str,
+    app_id: str,
+    include_current: bool = Query(True, description="Include current episode if active"),
+):
+    """List all episodes for an app environment.
+
+    Returns completed episodes and optionally the current active episode.
+    """
+    env_key = _get_env_key(simulation_id, app_id)
+    env = _env_wrappers.get(env_key)
+
+    if env is None:
+        return EpisodeListResponse(episodes=[], total=0)
+
+    episodes = []
+
+    # Add completed episodes
+    for ep in env.get_all_episodes():
+        episodes.append(EpisodeHistoryResponse(
+            episode_id=ep.episode_id,
+            started_at=ep.started_at,
+            ended_at=ep.ended_at,
+            snapshots=[
+                StateSnapshotResponse(
+                    step=s.step,
+                    timestamp=s.timestamp,
+                    state=s.state,
+                    action=s.action,
+                    params=s.params,
+                    reward=s.reward,
+                )
+                for s in ep.snapshots
+            ],
+            terminated=ep.terminated,
+            truncated=ep.truncated,
+            total_reward=ep.total_reward,
+            step_count=ep.step_count,
+        ))
+
+    # Include current episode if requested and active
+    if include_current and env.is_active:
+        current = env.get_episode_history()
+        if current:
+            episodes.append(EpisodeHistoryResponse(
+                episode_id=current.episode_id,
+                started_at=current.started_at,
+                ended_at=current.ended_at,
+                snapshots=[
+                    StateSnapshotResponse(
+                        step=s.step,
+                        timestamp=s.timestamp,
+                        state=s.state,
+                        action=s.action,
+                        params=s.params,
+                        reward=s.reward,
+                    )
+                    for s in current.snapshots
+                ],
+                terminated=current.terminated,
+                truncated=current.truncated,
+                total_reward=current.total_reward,
+                step_count=current.step_count,
+            ))
+
+    return EpisodeListResponse(episodes=episodes, total=len(episodes))
+
+
+@router.get(
+    "/simulations/{simulation_id}/apps/{app_id}/episodes/{episode_id}",
+    response_model=EpisodeHistoryResponse,
+)
+async def get_episode_history(
+    simulation_id: str,
+    app_id: str,
+    episode_id: str,
+):
+    """Get detailed history for a specific episode.
+
+    Returns all state snapshots, actions, and rewards for the episode.
+    """
+    env_key = _get_env_key(simulation_id, app_id)
+    env = _env_wrappers.get(env_key)
+
+    if env is None:
+        raise HTTPException(status_code=404, detail={
+            "code": "ENV_NOT_FOUND",
+            "message": "No environment wrapper found for this app.",
+        })
+
+    history = env.get_episode_history(episode_id)
+    if history is None:
+        raise HTTPException(status_code=404, detail={
+            "code": "EPISODE_NOT_FOUND",
+            "message": f"Episode '{episode_id}' not found.",
+        })
+
+    return EpisodeHistoryResponse(
+        episode_id=history.episode_id,
+        started_at=history.started_at,
+        ended_at=history.ended_at,
+        snapshots=[
+            StateSnapshotResponse(
+                step=s.step,
+                timestamp=s.timestamp,
+                state=s.state,
+                action=s.action,
+                params=s.params,
+                reward=s.reward,
+            )
+            for s in history.snapshots
+        ],
+        terminated=history.terminated,
+        truncated=history.truncated,
+        total_reward=history.total_reward,
+        step_count=history.step_count,
+    )
+
+
+@router.get(
+    "/simulations/{simulation_id}/apps/{app_id}/episodes/{episode_id}/trajectory",
+    response_model=TrajectoryResponse,
+)
+async def get_episode_trajectory(
+    simulation_id: str,
+    app_id: str,
+    episode_id: str,
+):
+    """Get (state, action, reward) trajectory for RL training.
+
+    Returns the trajectory in a format suitable for reinforcement
+    learning algorithms.
+    """
+    env_key = _get_env_key(simulation_id, app_id)
+    env = _env_wrappers.get(env_key)
+
+    if env is None:
+        raise HTTPException(status_code=404, detail={
+            "code": "ENV_NOT_FOUND",
+            "message": "No environment wrapper found for this app.",
+        })
+
+    history = env.get_episode_history(episode_id)
+    if history is None:
+        raise HTTPException(status_code=404, detail={
+            "code": "EPISODE_NOT_FOUND",
+            "message": f"Episode '{episode_id}' not found.",
+        })
+
+    trajectory = [
+        TrajectoryItem(state=state, action=action, reward=reward)
+        for state, action, reward in history.get_trajectory()
+    ]
+
+    return TrajectoryResponse(
+        episode_id=history.episode_id,
+        trajectory=trajectory,
+        total_reward=history.total_reward,
+    )
+
+
+@router.post("/simulations/{simulation_id}/apps/{app_id}/env/mark-terminated")
+async def mark_episode_terminated(
+    simulation_id: str,
+    app_id: str,
+    terminated: bool = True,
+):
+    """Manually mark the current episode as terminated.
+
+    Use this when external logic determines that the goal has been achieved
+    (e.g., task completion verification).
+    """
+    env_key = _get_env_key(simulation_id, app_id)
+    env = _env_wrappers.get(env_key)
+
+    if env is None:
+        raise HTTPException(status_code=404, detail={
+            "code": "ENV_NOT_FOUND",
+            "message": "No environment wrapper found for this app.",
+        })
+
+    if not env.is_active and not env.terminated:
+        raise HTTPException(status_code=400, detail={
+            "code": "NO_ACTIVE_EPISODE",
+            "message": "No active episode to mark as terminated.",
+        })
+
+    env.mark_terminated(terminated)
+
+    return {
+        "status": "success",
+        "episode_id": env.episode_id,
+        "terminated": env.terminated,
+    }

@@ -79,3 +79,96 @@ class AvailableAppsResponse(BaseModel):
     """Response for listing available app types."""
 
     apps: list[AppInfoResponse] = Field(default_factory=list, description="Available app types")
+
+
+# ==============================================================================
+# Environment Semantics Schemas
+# ==============================================================================
+
+
+class EnvResetRequest(BaseModel):
+    """Request to reset an app environment for a new episode."""
+
+    agents: list[str] = Field(..., description="List of agent IDs for the episode")
+    config: dict[str, Any] = Field(default_factory=dict, description="App configuration")
+    seed: int | None = Field(None, description="Optional random seed for reproducibility")
+    max_steps: int = Field(100, ge=1, le=10000, description="Maximum steps per episode")
+
+
+class EnvResetResponse(BaseModel):
+    """Response from resetting an app environment."""
+
+    episode_id: str = Field(..., description="Unique episode identifier")
+    observation: dict[str, Any] = Field(..., description="Initial state observation")
+    info: dict[str, Any] = Field(default_factory=dict, description="Episode metadata")
+
+
+class EnvStepRequest(BaseModel):
+    """Request to execute a step in the environment."""
+
+    agent_id: str = Field(..., description="ID of the agent performing the action")
+    action: str = Field(..., description="Action name")
+    params: dict[str, Any] = Field(default_factory=dict, description="Action parameters")
+
+
+class EnvStepResponse(BaseModel):
+    """Response from executing a step in the environment."""
+
+    observation: dict[str, Any] = Field(..., description="State observation after action")
+    reward: float = Field(..., description="Reward for this step")
+    terminated: bool = Field(..., description="Whether episode ended due to goal completion")
+    truncated: bool = Field(..., description="Whether episode ended due to max steps")
+    info: dict[str, Any] = Field(default_factory=dict, description="Additional metadata")
+
+
+class StateSnapshotResponse(BaseModel):
+    """Response for a state snapshot at a point in time."""
+
+    step: int = Field(..., description="Step number within the episode")
+    timestamp: datetime = Field(..., description="When this snapshot was taken")
+    state: dict[str, Any] = Field(..., description="Full state at this step")
+    action: str | None = Field(None, description="Action taken (None for initial state)")
+    params: dict[str, Any] | None = Field(None, description="Action parameters")
+    reward: float = Field(0.0, description="Reward received for this step")
+
+
+class EpisodeHistoryResponse(BaseModel):
+    """Response for episode history."""
+
+    episode_id: str = Field(..., description="Unique episode identifier")
+    started_at: datetime = Field(..., description="When the episode started")
+    ended_at: datetime | None = Field(None, description="When the episode ended")
+    snapshots: list[StateSnapshotResponse] = Field(
+        default_factory=list, description="State snapshots in order"
+    )
+    terminated: bool = Field(..., description="Whether episode ended due to goal")
+    truncated: bool = Field(..., description="Whether episode was truncated")
+    total_reward: float = Field(..., description="Cumulative reward")
+    step_count: int = Field(0, description="Number of steps taken")
+
+
+class EpisodeListResponse(BaseModel):
+    """Response for listing episodes."""
+
+    episodes: list[EpisodeHistoryResponse] = Field(
+        default_factory=list, description="List of episodes"
+    )
+    total: int = Field(0, description="Total number of episodes")
+
+
+class TrajectoryItem(BaseModel):
+    """A single item in a trajectory (state, action, reward tuple)."""
+
+    state: dict[str, Any] = Field(..., description="State at this step")
+    action: str | None = Field(None, description="Action taken")
+    reward: float = Field(..., description="Reward received")
+
+
+class TrajectoryResponse(BaseModel):
+    """Response for episode trajectory."""
+
+    episode_id: str = Field(..., description="Episode identifier")
+    trajectory: list[TrajectoryItem] = Field(
+        default_factory=list, description="(state, action, reward) tuples"
+    )
+    total_reward: float = Field(..., description="Total episode reward")
