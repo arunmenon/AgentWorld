@@ -38,46 +38,76 @@ def generate_personality_prompt(traits: TraitVector, name: str = "Agent") -> str
     return "\n".join(lines)
 
 
-def generate_response_guidance(traits: TraitVector) -> str:
-    """Generate response style guidance based on traits.
+def generate_response_guidance(
+    traits: TraitVector,
+    role: str = "peer",
+) -> str:
+    """Generate response style guidance based on traits and role.
+
+    Role-aware guidance prevents sycophantic behavior by providing
+    appropriate guidance for each role type per ADR-020.1.
 
     Args:
         traits: TraitVector defining the personality
+        role: Agent role - "service_agent", "customer", or "peer"
 
     Returns:
         Guidance for how the agent should respond
     """
     guidance = []
 
-    # Extraversion affects verbosity
-    if traits.extraversion > 0.7:
-        guidance.append("Be expressive and engaging in your responses.")
-    elif traits.extraversion < 0.3:
-        guidance.append("Be concise and thoughtful. You prefer listening over talking.")
+    # Role-specific guidance (takes precedence over trait-based)
+    if role == "service_agent":
+        # Service agents should be professional and direct, not sycophantic
+        guidance.append("Be professional and efficient in your responses.")
+        guidance.append("Guide the customer through steps clearly and directly.")
+        guidance.append("Avoid excessive pleasantries or over-apologizing.")
+        guidance.append("Focus on resolving the customer's issue promptly.")
 
-    # Agreeableness affects tone
-    if traits.agreeableness > 0.7:
-        guidance.append("Be warm, supportive, and look for common ground.")
-    elif traits.agreeableness < 0.3:
-        guidance.append("Don't hesitate to disagree or challenge ideas directly.")
+    elif role == "customer":
+        # Customers should act naturally, not overly polite
+        guidance.append("You are trying to resolve an issue or complete a task.")
+        guidance.append("Be direct about what you need help with.")
 
-    # Openness affects creativity
-    if traits.openness > 0.7:
-        guidance.append("Feel free to explore creative or unconventional ideas.")
-    elif traits.openness < 0.3:
-        guidance.append("Focus on practical, proven approaches.")
+        # Trait modifiers for customers
+        if traits.neuroticism > 0.6:
+            guidance.append("You may express frustration if things take too long or get confusing.")
+        if traits.agreeableness < 0.4:
+            guidance.append("Don't hesitate to push back if instructions are unclear.")
+        if traits.conscientiousness > 0.7:
+            guidance.append("You want to understand each step before proceeding.")
 
-    # Conscientiousness affects structure
-    if traits.conscientiousness > 0.7:
-        guidance.append("Be thorough and well-organized in your responses.")
-    elif traits.conscientiousness < 0.3:
-        guidance.append("Don't worry too much about perfect structure. Be natural.")
+    else:
+        # Peer mode - use traditional trait-based guidance
+        # Extraversion affects verbosity
+        if traits.extraversion > 0.7:
+            guidance.append("Be expressive and engaging in your responses.")
+        elif traits.extraversion < 0.3:
+            guidance.append("Be concise and thoughtful. You prefer listening over talking.")
 
-    # Neuroticism affects emotional expression
-    if traits.neuroticism > 0.7:
-        guidance.append("You may express concern or caution about potential issues.")
-    elif traits.neuroticism < 0.3:
-        guidance.append("Stay calm and confident, even when discussing challenges.")
+        # Agreeableness affects tone
+        if traits.agreeableness > 0.7:
+            guidance.append("Be warm, supportive, and look for common ground.")
+        elif traits.agreeableness < 0.3:
+            guidance.append("Don't hesitate to disagree or challenge ideas directly.")
+
+        # Openness affects creativity
+        if traits.openness > 0.7:
+            guidance.append("Feel free to explore creative or unconventional ideas.")
+        elif traits.openness < 0.3:
+            guidance.append("Focus on practical, proven approaches.")
+
+        # Conscientiousness affects structure
+        if traits.conscientiousness > 0.7:
+            guidance.append("Be thorough and well-organized in your responses.")
+        elif traits.conscientiousness < 0.3:
+            guidance.append("Don't worry too much about perfect structure. Be natural.")
+
+        # Neuroticism affects emotional expression
+        if traits.neuroticism > 0.7:
+            guidance.append("You may express concern or caution about potential issues.")
+        elif traits.neuroticism < 0.3:
+            guidance.append("Stay calm and confident, even when discussing challenges.")
 
     if not guidance:
         return "Respond naturally and authentically."
@@ -92,6 +122,7 @@ def generate_system_prompt(
     additional_instructions: str = "",
     observable_state: dict[str, any] | None = None,
     state_constrained_mode: bool = False,
+    role: str = "peer",
 ) -> str:
     """Generate a complete system prompt for an agent.
 
@@ -105,6 +136,8 @@ def generate_system_prompt(
             can only report what they actually "see" on their device.
         state_constrained_mode: If True, adds strict constraints about only
             reporting observable state. Per τ²-bench requirements.
+        role: Agent role - "service_agent", "customer", or "peer". Used for
+            role-aware response guidance per ADR-020.1.
 
     Returns:
         Complete system prompt
@@ -118,8 +151,8 @@ def generate_system_prompt(
     if background:
         sections.append(f"\nBackground:\n{background}")
 
-    # Response guidance
-    sections.append(f"\nResponse Style:\n{generate_response_guidance(traits)}")
+    # Response guidance (role-aware)
+    sections.append(f"\nResponse Style:\n{generate_response_guidance(traits, role=role)}")
 
     # Observable state section (τ²-bench state-constrained mode)
     if observable_state is not None:
