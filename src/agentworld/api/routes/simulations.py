@@ -34,6 +34,7 @@ from agentworld.api.schemas.injection import (
     HealthCheckResponse,
 )
 from agentworld.api.schemas.common import MetaResponse
+from agentworld.api.schemas.dual_control import CoordinationMetricsSchema
 
 
 router = APIRouter()
@@ -680,3 +681,100 @@ async def check_injection_health(simulation_id: str, agent_id: str):
         latency_ms=latency_ms if is_healthy else None,
         error=None if is_healthy else "Health check failed",
     )
+
+
+# =============================================================================
+# Coordination Metrics Endpoints (ADR-020.1)
+# =============================================================================
+
+
+@router.get(
+    "/simulations/{simulation_id}/coordination-metrics",
+    response_model=CoordinationMetricsSchema
+)
+async def get_simulation_coordination_metrics(simulation_id: str):
+    """Get coordination metrics for a simulation.
+
+    Returns metrics computed from coordination events tracked during
+    the simulation run. Uses the simulation ID as the trial_id for
+    querying events.
+    """
+    from datetime import datetime, UTC
+    from sqlalchemy.orm import Session as SQLSession
+
+    from agentworld.persistence.database import get_session
+    from agentworld.persistence.models import CoordinationEventModel, DualControlTaskModel
+
+    repo = get_repo()
+    sim = repo.get_simulation(simulation_id)
+
+    if not sim:
+        raise HTTPException(status_code=404, detail={
+            "code": "SIMULATION_NOT_FOUND",
+            "message": f"Simulation '{simulation_id}' not found",
+        })
+
+    # Get task_id from simulation config
+    config_data = sim.get("config") or {}
+    task_id = config_data.get("task_id")
+
+    if not task_id:
+        # No task associated - return empty metrics
+        return CoordinationMetricsSchema(
+            task_id="unknown",
+            trial_id=simulation_id,
+            total_handoffs_required=0,
+            handoffs_completed=0,
+            coordination_success_rate=0.0,
+            avg_instruction_to_action_turns=0.0,
+            unnecessary_user_actions=0,
+            instruction_clarity_score=None,
+            user_confusion_count=0,
+            computed_at=datetime.now(UTC),
+        )
+
+    with get_session() as session:
+        # Get task to know expected handoff count
+        task = session.query(DualControlTaskModel).filter(
+            DualControlTaskModel.task_id == task_id
+        ).first()
+
+        total_handoffs_required = task.expected_coordination_count if task else 0
+
+        # Query coordination events for this simulation (trial)
+        events = session.query(CoordinationEventModel).filter(
+            CoordinationEventModel.trial_id == simulation_id
+        ).all()
+
+        # Compute metrics
+        handoffs_completed = sum(1 for e in events if e.handoff_successful)
+        success_rate = (
+            handoffs_completed / total_handoffs_required
+            if total_handoffs_required > 0 else 0.0
+        )
+
+        # Latency metrics
+        latencies = [
+            e.latency_turns for e in events
+            if e.handoff_successful and e.latency_turns and e.latency_turns > 0
+        ]
+        avg_latency = sum(latencies) / len(latencies) if latencies else 0.0
+
+        # Confusion count (low confidence matches)
+        confusion_count = sum(
+            1 for e in events
+            if e.match_confidence and e.match_confidence < 0.5 and e.instruction_text
+        )
+
+        return CoordinationMetricsSchema(
+            task_id=task_id,
+            trial_id=simulation_id,
+            total_handoffs_required=total_handoffs_required,
+            handoffs_completed=handoffs_completed,
+            coordination_success_rate=success_rate,
+            avg_instruction_to_action_turns=avg_latency,
+            unnecessary_user_actions=0,  # Would need more analysis
+            instruction_clarity_score=None,  # Would need LLM analysis
+            user_confusion_count=confusion_count,
+            computed_at=datetime.now(UTC),
+        )

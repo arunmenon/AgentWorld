@@ -1208,7 +1208,7 @@ class Simulation:
             turn_number=self.current_step,
         )
 
-        # If a handoff was completed, log it
+        # If a handoff was completed, log it and persist to database
         if event and event.handoff_successful:
             self.log_handoff(
                 handoff_id=event.matched_handoff_id or event.event_id,
@@ -1218,6 +1218,74 @@ class Simulation:
                 instruction=event.instruction_text,
                 action_taken=event.action_taken or action_name,
             )
+            # Persist coordination event to database
+            self._persist_coordination_event(event, params)
+
+    def _persist_coordination_event(
+        self,
+        event: Any,  # CoordinationEvent from tracker
+        params: dict[str, Any],
+    ) -> None:
+        """Persist a coordination event to the database.
+
+        Args:
+            event: The coordination event from the tracker
+            params: Action parameters
+        """
+        try:
+            import json
+            import uuid
+            from agentworld.persistence.database import get_session
+            from agentworld.persistence.models import CoordinationEventModel
+
+            # Get task_id from config
+            task_id = None
+            if self.config:
+                task_id = getattr(self.config, 'task_id', None)
+                if not task_id:
+                    task = getattr(self.config, 'task', None)
+                    if task:
+                        task_id = getattr(task, 'task_id', None)
+
+            if not task_id:
+                logger.debug("No task_id available, skipping coordination event persistence")
+                return
+
+            # Get agent roles
+            instructor_role = "service_agent"
+            actor_role = "customer"
+            if self._coordination_tracker:
+                instructor_role = self._coordination_tracker._agent_roles.get(
+                    event.instructor_id, "service_agent"
+                )
+                actor_role = self._coordination_tracker._agent_roles.get(
+                    event.actor_id, "customer"
+                ) if event.actor_id else "customer"
+
+            with get_session() as session:
+                model = CoordinationEventModel(
+                    id=str(uuid.uuid4()),
+                    event_id=event.event_id,
+                    trial_id=self.id,  # Use simulation ID as trial ID
+                    task_id=task_id,
+                    instructor_id=event.instructor_id,
+                    instructor_role=instructor_role,
+                    instruction_text=event.instruction_text,
+                    actor_id=event.actor_id,
+                    actor_role=actor_role,
+                    action_taken=event.action_taken,
+                    action_params_json=json.dumps(params) if params else None,
+                    matched_handoff_id=event.matched_handoff_id,
+                    match_confidence=event.match_confidence if hasattr(event, 'match_confidence') else 1.0,
+                    handoff_successful=1 if event.handoff_successful else 0,
+                    latency_turns=event.instruction_turn or 0,
+                )
+                session.add(model)
+                session.commit()
+                logger.info(f"Persisted coordination event {event.event_id} for trial {self.id}")
+
+        except Exception as e:
+            logger.warning(f"Failed to persist coordination event: {e}")
 
     async def run(self, steps: int | None = None) -> list[Message]:
         """Run the simulation for multiple steps.
