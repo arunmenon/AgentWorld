@@ -7,8 +7,10 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any, Callable, Awaitable, Optional, TYPE_CHECKING
 
-from agentworld.core.models import Message, SimulationConfig, SimulationStatus
+from agentworld.core.models import Message, SimulationConfig, SimulationStatus, TerminationMode
 from agentworld.core.exceptions import SimulationError
+from agentworld.goals.types import GoalSpec, GoalEvaluationResult
+from agentworld.goals.evaluator import GoalEvaluator
 from agentworld.agents.agent import Agent
 from agentworld.persistence.repository import Repository
 from agentworld.persistence.database import init_db
@@ -71,6 +73,14 @@ class Simulation:
     # τ²-bench state-constrained mode (ADR-020.1)
     state_constrained_mode: bool = False
     _state_constrained_agents: set[str] = field(default_factory=set, repr=False)
+
+    # Goal-based termination (ADR-020.1)
+    _goal_evaluator: GoalEvaluator | None = field(default=None, repr=False)
+    _action_log: list[dict[str, Any]] = field(default_factory=list, repr=False)
+    _handoff_log: list[dict[str, Any]] = field(default_factory=list, repr=False)
+    _output_log: list[dict[str, Any]] = field(default_factory=list, repr=False)
+    _goal_achieved: bool = field(default=False, repr=False)
+    _goal_achieved_step: int | None = field(default=None, repr=False)
 
     @classmethod
     def from_config(cls, config: SimulationConfig) -> "Simulation":
@@ -642,6 +652,31 @@ class Simulation:
         # Plugin hook: step complete (per ADR-014)
         PluginHooks.on_step_complete(self.current_step, self)
 
+        # Log outputs for goal checking
+        for msg in step_messages:
+            self._output_log.append({
+                "agent_id": msg.sender_id,
+                "content": msg.content,
+                "step": self.current_step,
+            })
+
+        # Check goals if configured (ADR-020.1 goal-based termination)
+        goal_achieved = False
+        if self._should_check_goals():
+            goal_result = self._evaluate_goals()
+            if goal_result.achieved:
+                goal_achieved = True
+                self._goal_achieved = True
+                self._goal_achieved_step = self.current_step
+                self.emitter.emit("goal_achieved", {
+                    "step": self.current_step,
+                    "conditions_met": goal_result.conditions_met,
+                    "details": goal_result.details,
+                })
+                logger.info(
+                    f"Goal achieved at step {self.current_step}: {goal_result.details}"
+                )
+
         # Emit step completed event
         self.emitter.step_completed(
             self.current_step,
@@ -652,13 +687,24 @@ class Simulation:
         # Notify callbacks
         await self._notify_step(self.current_step, step_messages)
 
-        # Check if completed
-        if self.current_step >= self.total_steps:
+        # Check if completed - goal takes precedence in goal/hybrid modes
+        if goal_achieved:
             self.status = SimulationStatus.COMPLETED
             self.emitter.simulation_completed({
                 "total_messages": len(self._messages),
                 "total_tokens": self.total_tokens,
                 "total_cost": self.total_cost,
+                "goal_achieved": True,
+                "goal_achieved_step": self.current_step,
+            })
+        elif self.current_step >= self.total_steps:
+            self.status = SimulationStatus.COMPLETED
+            self.emitter.simulation_completed({
+                "total_messages": len(self._messages),
+                "total_tokens": self.total_tokens,
+                "total_cost": self.total_cost,
+                "goal_achieved": self._goal_achieved,
+                "goal_achieved_step": self._goal_achieved_step,
             })
 
         # Update state
@@ -723,8 +769,15 @@ class Simulation:
                 if execution_results:
                     # Keep the cleaned message content (without action directives)
                     message.content = cleaned_content
-                    # Log action results
+                    # Log action results for goal evaluation
                     for result in execution_results:
+                        self.log_action(
+                            app_id=result.action.app_id,
+                            action=result.action.action,
+                            success=result.result.success,
+                            params=result.action.params,
+                            result=result.result.data if hasattr(result.result, 'data') else None,
+                        )
                         if result.result.success:
                             logger.info(
                                 f"App action {result.action.app_id}.{result.action.action} "
@@ -863,8 +916,15 @@ class Simulation:
                 # Update message content if actions were extracted
                 if execution_results:
                     message.content = cleaned_content
-                    # Log action results
+                    # Log action results for goal evaluation
                     for exec_result in execution_results:
+                        self.log_action(
+                            app_id=exec_result.action.app_id,
+                            action=exec_result.action.action,
+                            success=exec_result.result.success,
+                            params=exec_result.action.params,
+                            result=exec_result.result.data if hasattr(exec_result.result, 'data') else None,
+                        )
                         if exec_result.result.success:
                             logger.info(
                                 f"App action {exec_result.action.app_id}.{exec_result.action.action} "
@@ -915,6 +975,119 @@ class Simulation:
                         agent.receive_message(message)
 
         return step_messages
+
+    def _should_check_goals(self) -> bool:
+        """Check if goals should be evaluated based on termination mode."""
+        if self.config is None:
+            return False
+
+        termination_mode = getattr(self.config, 'termination_mode', TerminationMode.MAX_STEPS)
+        if isinstance(termination_mode, str):
+            termination_mode = TerminationMode(termination_mode)
+
+        if termination_mode in (TerminationMode.GOAL, TerminationMode.HYBRID):
+            return self.config.goal_spec is not None
+
+        return False
+
+    def _evaluate_goals(self) -> GoalEvaluationResult:
+        """Evaluate goal conditions against current state.
+
+        Returns:
+            GoalEvaluationResult with achieved status and details
+        """
+        if self.config is None or self.config.goal_spec is None:
+            return GoalEvaluationResult(
+                achieved=False,
+                condition_results=[],
+                details="No goal spec configured",
+            )
+
+        # Initialize evaluator if needed
+        if self._goal_evaluator is None:
+            self._goal_evaluator = GoalEvaluator()
+
+        # Collect current app states
+        app_states: dict[str, dict[str, Any]] = {}
+        if self._app_manager is not None:
+            app_states = self._app_manager.get_all_states()
+
+        # Evaluate goals
+        return self._goal_evaluator.evaluate(
+            goal_spec=self.config.goal_spec,
+            app_states=app_states,
+            action_log=self._action_log,
+            handoff_log=self._handoff_log,
+            output_log=self._output_log,
+            current_step=self.current_step,
+        )
+
+    def log_action(
+        self,
+        app_id: str,
+        action: str,
+        success: bool,
+        params: dict[str, Any] | None = None,
+        result: Any = None,
+    ) -> None:
+        """Log an app action for goal evaluation.
+
+        Called by app manager when actions are executed.
+
+        Args:
+            app_id: ID of the app
+            action: Action name that was called
+            success: Whether the action succeeded
+            params: Action parameters
+            result: Action result
+        """
+        self._action_log.append({
+            "app_id": app_id,
+            "action": action,
+            "success": success,
+            "params": params or {},
+            "result": result,
+            "step": self.current_step,
+        })
+
+    def log_handoff(
+        self,
+        handoff_id: str,
+        from_agent: str,
+        to_agent: str,
+        success: bool,
+        instruction: str = "",
+        action_taken: str = "",
+    ) -> None:
+        """Log a coordination handoff for goal evaluation.
+
+        Args:
+            handoff_id: ID of the handoff
+            from_agent: Agent that gave instruction
+            to_agent: Agent that executed action
+            success: Whether handoff was successful
+            instruction: The instruction text
+            action_taken: The action that was taken
+        """
+        self._handoff_log.append({
+            "handoff_id": handoff_id,
+            "from_agent": from_agent,
+            "to_agent": to_agent,
+            "success": success,
+            "instruction": instruction,
+            "action_taken": action_taken,
+            "step": self.current_step,
+        })
+
+    @property
+    def goal_achieved(self) -> bool:
+        """Check if goal has been achieved."""
+        return self._goal_achieved
+
+    @property
+    def goal_achieved_step(self) -> int | None:
+        """Get the step at which goal was achieved."""
+        return self._goal_achieved_step
 
     async def run(self, steps: int | None = None) -> list[Message]:
         """Run the simulation for multiple steps.
@@ -978,6 +1151,16 @@ class Simulation:
                 "states": self._app_manager.get_all_states(),
             }
 
+        # Get goal info if available (ADR-020.1)
+        goal_info = None
+        if self.config and self.config.goal_spec:
+            goal_info = {
+                "goal_spec": self.config.goal_spec.to_dict() if hasattr(self.config.goal_spec, 'to_dict') else self.config.goal_spec,
+                "goal_achieved": self._goal_achieved,
+                "goal_achieved_step": self._goal_achieved_step,
+                "termination_mode": self.config.termination_mode.value if hasattr(self.config.termination_mode, 'value') else self.config.termination_mode,
+            }
+
         return {
             "id": self.id,
             "name": self.name,
@@ -990,6 +1173,7 @@ class Simulation:
             "message_count": len(self._messages),
             "topology": topology_info,
             "apps": apps_info,
+            "goal": goal_info,
         }
 
     def __repr__(self) -> str:
