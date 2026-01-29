@@ -107,6 +107,13 @@ from agentworld.apps.logic_engine import (
     ExecutionContext,
 )
 
+# OpenEnv adapter (Meta/Hugging Face environments)
+from agentworld.apps.openenv_adapter import (
+    OpenEnvApp,
+    create_openenv_app,
+    list_available_openenv_apps,
+)
+
 __all__ = [
     # Data structures
     "ParamSpec",
@@ -172,6 +179,10 @@ __all__ = [
     # Logic engine
     "LogicEngine",
     "ExecutionContext",
+    # OpenEnv adapter (Meta/Hugging Face environments)
+    "OpenEnvApp",
+    "create_openenv_app",
+    "list_available_openenv_apps",
 ]
 
 # Register built-in apps
