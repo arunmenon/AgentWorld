@@ -2,7 +2,7 @@ export { MessageBubble, StepDivider } from './MessageBubble'
 export type { MessageBubbleProps, StepDividerProps } from './MessageBubble'
 
 export { ConversationStream } from './ConversationStream'
-export type { ConversationStreamProps, Message } from './ConversationStream'
+export type { ConversationStreamProps, Message, MessageType, EpisodeEventMetadata } from './ConversationStream'
 
 export { TopologyGraph } from './TopologyGraph'
 export type { TopologyGraphProps, Agent as TopologyAgent } from './TopologyGraph'
@@ -29,3 +29,12 @@ export { AgentInjector } from './AgentInjector'
 export { EvaluationPanel } from './EvaluationPanel'
 
 export { AppsPanel } from './AppsPanel'
+
+export { EpisodeHistoryPanel } from './EpisodeHistoryPanel'
+
+export { EpisodeEventBubble } from './EpisodeEventBubble'
+export type { EpisodeEventBubbleProps } from './EpisodeEventBubble'
+
+export { StateDiffView, StateDiffInline, StateDiffBadges, StateViewToggle } from './StateDiffView'
+
+export { RewardChart, RewardChartCompact } from './RewardChart'

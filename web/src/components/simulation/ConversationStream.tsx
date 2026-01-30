@@ -1,9 +1,31 @@
 import { useRef, useEffect, useCallback, useState, useMemo, memo } from 'react'
 import { VariableSizeList as List, ListChildComponentProps } from 'react-window'
 import { MessageBubble, StepDivider } from './MessageBubble'
+import { EpisodeEventBubble } from './EpisodeEventBubble'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui'
 import { Search, Filter, ArrowDown } from 'lucide-react'
+
+export type MessageType = 'message' | 'episode_reset' | 'episode_step' | 'episode_close' | 'episode_action' | 'episode_turn'
+
+export interface EpisodeEventMetadata {
+  app_id?: string
+  episode_id?: string
+  episode_step?: number
+  action_number?: number
+  turn_number?: number
+  agent_id?: string
+  agent_name?: string
+  action?: string
+  params?: Record<string, unknown>
+  reward?: number
+  cumulative_reward?: number
+  terminated?: boolean
+  truncated?: boolean
+  status?: 'running' | 'terminated' | 'truncated'
+  agents?: string[]
+  max_steps?: number
+}
 
 export interface Message {
   id: string
@@ -14,6 +36,8 @@ export interface Message {
   content: string
   step: number
   timestamp?: string | Date | null
+  message_type?: MessageType
+  metadata?: EpisodeEventMetadata | null
 }
 
 export interface ConversationStreamProps {
@@ -29,7 +53,7 @@ export interface ConversationStreamProps {
 }
 
 // Row types for the virtualized list
-type RowType = 'step-divider' | 'message'
+type RowType = 'step-divider' | 'message' | 'episode-event'
 
 interface RowData {
   type: RowType
@@ -37,6 +61,11 @@ interface RowData {
   message?: Message
   index: number
   isAlternate: boolean
+}
+
+// Check if a message is an episode event
+function isEpisodeEvent(message: Message): boolean {
+  return message.message_type !== undefined && message.message_type !== 'message'
 }
 
 // Estimate message height based on content length
@@ -52,6 +81,10 @@ function estimateMessageHeight(content: string): number {
 
 // Step divider height is constant
 const STEP_DIVIDER_HEIGHT = 48
+
+// Episode event height - includes content + margins (my-2 = 16px)
+// Action events with metadata can have 3 rows of content
+const EPISODE_EVENT_HEIGHT = 110
 
 // Minimum row height
 const MIN_ROW_HEIGHT = 80
@@ -75,6 +108,24 @@ const Row = memo(function Row({
   }
 
   const message = row.message!
+
+  // Handle episode events
+  if (row.type === 'episode-event') {
+    return (
+      <div style={style} className="px-2">
+        <EpisodeEventBubble
+          id={message.id}
+          messageType={message.message_type!}
+          content={message.content}
+          timestamp={message.timestamp}
+          step={message.step}
+          metadata={message.metadata}
+        />
+      </div>
+    )
+  }
+
+  // Regular message
   const isHighlighted = data.selectedAgentId === message.sender_id
 
   return (
@@ -147,8 +198,11 @@ export function ConversationStream({
         currentStep = message.step
       }
 
+      // Determine row type based on message type
+      const rowType: RowType = isEpisodeEvent(message) ? 'episode-event' : 'message'
+
       result.push({
-        type: 'message',
+        type: rowType,
         message,
         index: result.length,
         isAlternate: messageIndex % 2 === 1,
@@ -172,6 +226,19 @@ export function ConversationStream({
 
       if (row.type === 'step-divider') {
         height = STEP_DIVIDER_HEIGHT
+      } else if (row.type === 'episode-event') {
+        // Episode events vary in height based on content
+        const msgType = row.message?.message_type
+        if (msgType === 'episode_action' || msgType === 'episode_step') {
+          // Actions/steps have metadata row with step number, reward, status
+          height = EPISODE_EVENT_HEIGHT
+        } else if (msgType === 'episode_reset') {
+          // Reset may have agents list
+          height = EPISODE_EVENT_HEIGHT - 10
+        } else {
+          // Turn/close are simpler
+          height = EPISODE_EVENT_HEIGHT - 20
+        }
       } else {
         height = Math.max(MIN_ROW_HEIGHT, estimateMessageHeight(row.message!.content))
       }
