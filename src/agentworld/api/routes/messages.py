@@ -52,20 +52,31 @@ async def list_messages(
     agents = repo.get_agents_for_simulation(simulation_id)
     agent_names = {a["id"]: a["name"] for a in agents}
 
-    responses = [
-        MessageResponse(
+    responses = []
+    for msg in messages:
+        sender_id = msg.get("sender_id")
+        receiver_id = msg.get("receiver_id")
+        message_type = msg.get("message_type", "message")
+
+        # For episode events, use special sender name
+        if message_type != "message":
+            sender_name = "Environment"
+        else:
+            sender_name = agent_names.get(sender_id) if sender_id else None
+
+        responses.append(MessageResponse(
             id=msg["id"],
             simulation_id=msg["simulation_id"],
-            sender_id=msg["sender_id"],
-            sender_name=agent_names.get(msg["sender_id"]),
-            receiver_id=msg.get("receiver_id"),
-            receiver_name=agent_names.get(msg.get("receiver_id")) if msg.get("receiver_id") else None,
+            sender_id=sender_id or "",  # Empty string for episode events
+            sender_name=sender_name,
+            receiver_id=receiver_id,
+            receiver_name=agent_names.get(receiver_id) if receiver_id else None,
             content=msg["content"],
             step=msg.get("step", 0),
             timestamp=msg.get("timestamp"),
-        )
-        for msg in messages
-    ]
+            message_type=message_type,
+            metadata=msg.get("metadata"),
+        ))
 
     return MessageListResponse(
         messages=responses,
@@ -97,14 +108,26 @@ async def get_message(simulation_id: str, message_id: str):
     agents = repo.get_agents_for_simulation(simulation_id)
     agent_names = {a["id"]: a["name"] for a in agents}
 
+    sender_id = msg.get("sender_id")
+    receiver_id = msg.get("receiver_id")
+    message_type = msg.get("message_type", "message")
+
+    # For episode events, use special sender name
+    if message_type != "message":
+        sender_name = "Environment"
+    else:
+        sender_name = agent_names.get(sender_id) if sender_id else None
+
     return MessageResponse(
         id=msg["id"],
         simulation_id=msg["simulation_id"],
-        sender_id=msg["sender_id"],
-        sender_name=agent_names.get(msg["sender_id"]),
-        receiver_id=msg.get("receiver_id"),
-        receiver_name=agent_names.get(msg.get("receiver_id")) if msg.get("receiver_id") else None,
+        sender_id=sender_id or "",
+        sender_name=sender_name,
+        receiver_id=receiver_id,
+        receiver_name=agent_names.get(receiver_id) if receiver_id else None,
         content=msg["content"],
         step=msg.get("step", 0),
         timestamp=msg.get("timestamp"),
+        message_type=message_type,
+        metadata=msg.get("metadata"),
     )

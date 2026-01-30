@@ -1,7 +1,7 @@
 """Simulation API schemas."""
 
 from datetime import datetime
-from typing import Any, Literal, Optional
+from typing import Any, Literal, Optional, Union
 
 from pydantic import BaseModel, Field
 
@@ -16,7 +16,8 @@ class GoalConditionResponse(BaseModel):
     field_path: Optional[str] = None
     operator: str = "equals"
     expected_value: Any = None
-    handoff_id: Optional[str] = None
+    # handoff_id can be int (from task data) or str
+    handoff_id: Optional[Union[str, int]] = None
     required_phrase: Optional[str] = None
 
 
@@ -76,6 +77,11 @@ class AgentConfigRequest(BaseModel):
     background: Optional[str] = None
     system_prompt: Optional[str] = None
     model: Optional[str] = None
+    # τ²-bench: Role for dual-control simulations
+    role: Optional[str] = Field(
+        default=None,
+        description="Agent role: 'peer', 'service_agent', or 'customer'"
+    )
 
 
 class AppConfigRequest(BaseModel):
@@ -181,3 +187,67 @@ class GenerateSimulationResponse(BaseModel):
         description="Generated simulation configuration"
     )
     error: Optional[str] = Field(None, description="Error message if failed")
+
+
+# ==============================================================================
+# Episode Schemas
+# ==============================================================================
+
+
+class EpisodeResponse(BaseModel):
+    """Episode information response."""
+
+    id: str
+    simulation_id: str
+    started_at: datetime | None = None
+    ended_at: datetime | None = None
+    action_count: int = 0   # App actions only
+    turn_count: int = 0     # All agent messages
+    total_reward: float = 0.0
+    terminated: bool = False
+    truncated: bool = False
+    metadata: dict[str, Any] | None = None
+
+    model_config = {"from_attributes": True}
+
+
+class EpisodeStartResponse(BaseModel):
+    """Response when starting a new episode."""
+
+    simulation_id: str
+    episode_id: str
+    message: str = "Episode started"
+
+
+class EpisodeEndRequest(BaseModel):
+    """Request to end an episode."""
+
+    terminated: bool = Field(
+        default=False,
+        description="True if goal was achieved"
+    )
+    truncated: bool = Field(
+        default=True,
+        description="True if ending due to max steps or manual stop"
+    )
+
+
+class EpisodeEndResponse(BaseModel):
+    """Response when ending an episode."""
+
+    simulation_id: str
+    episode_id: str
+    action_count: int   # App actions only
+    turn_count: int     # All agent messages
+    total_reward: float
+    terminated: bool
+    truncated: bool
+    message: str = "Episode ended"
+
+
+class EpisodeListResponse(BaseModel):
+    """List of episodes for a simulation."""
+
+    simulation_id: str
+    episodes: list[EpisodeResponse]
+    total: int

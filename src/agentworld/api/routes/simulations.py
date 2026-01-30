@@ -2,12 +2,15 @@
 
 import time
 import uuid
-from datetime import datetime
-from typing import Optional
+from typing import TYPE_CHECKING, Optional
 
 from fastapi import APIRouter, HTTPException, Query
 
 from agentworld.core.models import SimulationStatus, SimulationConfig, AgentConfig, TerminationMode
+
+if TYPE_CHECKING:
+    from agentworld.agents.external import InjectedAgentManager
+    from agentworld.simulation.runner import Simulation
 from agentworld.persistence.database import init_db
 from agentworld.persistence.repository import Repository
 from agentworld.goals.types import GoalSpec
@@ -26,6 +29,11 @@ from agentworld.api.schemas.simulations import (
     GoalConditionResponse,
     GenerateSimulationRequest,
     GenerateSimulationResponse,
+    EpisodeResponse,
+    EpisodeStartResponse,
+    EpisodeEndRequest,
+    EpisodeEndResponse,
+    EpisodeListResponse,
 )
 from agentworld.api.schemas.injection import (
     InjectAgentRequest,
@@ -45,11 +53,79 @@ router = APIRouter()
 # In production, this should be persisted
 _injected_agents: dict[str, "InjectedAgentManager"] = {}
 
+# In-memory storage for active simulation runners (for episode management)
+# In production, this should be persisted or use a more robust mechanism
+_active_runners: dict[str, "Simulation"] = {}
+
 
 def get_repo() -> Repository:
     """Get a repository instance."""
     init_db()
     return Repository()
+
+
+def _reconstruct_simulation(simulation_id: str, repo: Repository | None = None) -> "Simulation":
+    """Reconstruct a Simulation instance from database state.
+
+    Args:
+        simulation_id: ID of the simulation to reconstruct
+        repo: Optional repository instance (creates new if not provided)
+
+    Returns:
+        Simulation instance with state restored from DB
+
+    Raises:
+        HTTPException: If simulation not found
+    """
+    from agentworld.simulation.runner import Simulation
+    from agentworld.core.models import SimulationConfig, AgentConfig
+
+    if repo is None:
+        repo = get_repo()
+
+    sim_data = repo.get_simulation(simulation_id)
+    if not sim_data:
+        raise HTTPException(status_code=404, detail={
+            "code": "SIMULATION_NOT_FOUND",
+            "message": f"Simulation '{simulation_id}' not found",
+        })
+
+    # Reconstruct agent configs from stored data
+    agents_data = repo.get_agents_for_simulation(simulation_id)
+    agent_configs = [
+        AgentConfig(
+            name=agent_data.get("name", "Agent"),
+            traits=agent_data.get("traits", {}),
+            background=agent_data.get("background", ""),
+            system_prompt=agent_data.get("system_prompt"),
+            model=agent_data.get("model"),
+        )
+        for agent_data in agents_data
+    ]
+
+    config_data = sim_data.get("config") or {}
+    apps_config = config_data.get("apps")
+
+    config = SimulationConfig(
+        name=sim_data.get("name", "Simulation"),
+        agents=agent_configs,
+        steps=sim_data.get("total_steps", 10),
+        initial_prompt=config_data.get("initial_prompt", ""),
+        model=config_data.get("model", "openai/gpt-4o-mini"),
+        apps=apps_config,
+    )
+
+    sim = Simulation.from_config(config)
+    sim.id = simulation_id
+    sim.current_step = sim_data.get("current_step", 0)
+    sim.status = SimulationStatus(sim_data.get("status", "pending"))
+
+    # Match agent IDs with stored agents
+    for i, agent in enumerate(sim.agents):
+        if i < len(agents_data):
+            agent.id = agents_data[i].get("id", agent.id)
+
+    return sim
 
 
 def simulation_to_response(sim: dict, repo: Repository) -> SimulationResponse:
@@ -186,8 +262,9 @@ async def get_simulation(simulation_id: str):
 async def create_simulation(request: CreateSimulationRequest):
     """Create a new simulation."""
     import logging
+    import traceback
     logger = logging.getLogger(__name__)
-    logger.info(f"=== CREATE SIMULATION REQUEST ===")
+    logger.info("=== CREATE SIMULATION REQUEST ===")
     logger.info(f"Name: {request.name}")
     logger.info(f"Apps: {request.apps}")
 
@@ -313,12 +390,21 @@ async def create_simulation(request: CreateSimulationRequest):
     )
 
     # Create simulation using runner
-    from agentworld.simulation.runner import Simulation
+    try:
+        from agentworld.simulation.runner import Simulation
 
-    sim = Simulation.from_config(config)
-    sim._save_state()
+        sim = Simulation.from_config(config)
+        sim._save_state()
 
-    return simulation_to_response(repo.get_simulation(sim.id), repo)
+        return simulation_to_response(repo.get_simulation(sim.id), repo)
+    except Exception as e:
+        logger.error(f"Error creating simulation: {e}")
+        logger.error(traceback.format_exc())
+        raise HTTPException(status_code=500, detail={
+            "code": "SIMULATION_CREATION_ERROR",
+            "message": str(e),
+            "type": type(e).__name__,
+        })
 
 
 @router.delete("/simulations/{simulation_id}")
@@ -414,57 +500,21 @@ async def resume_simulation(simulation_id: str):
 @router.post("/simulations/{simulation_id}/step", response_model=StepResponse)
 async def execute_step(simulation_id: str, request: StepRequest):
     """Execute simulation step(s)."""
-    from agentworld.simulation.runner import Simulation
-    from agentworld.core.models import SimulationConfig, AgentConfig
-
     repo = get_repo()
+    sim = _reconstruct_simulation(simulation_id, repo)
+
+    # Get apps config to determine if initialization needed
     sim_data = repo.get_simulation(simulation_id)
-
-    if not sim_data:
-        raise HTTPException(status_code=404, detail={
-            "code": "SIMULATION_NOT_FOUND",
-            "message": f"Simulation '{simulation_id}' not found",
-        })
-
-    # Reconstruct the simulation from stored data
-    agents_data = repo.get_agents_for_simulation(simulation_id)
-    agent_configs = []
-    for agent_data in agents_data:
-        agent_configs.append(AgentConfig(
-            name=agent_data.get("name", "Agent"),
-            traits=agent_data.get("traits", {}),
-            background=agent_data.get("background", ""),
-            system_prompt=agent_data.get("system_prompt"),
-            model=agent_data.get("model"),
-        ))
-
-    # Get config from stored simulation
     config_data = sim_data.get("config") or {}
     apps_config = config_data.get("apps")
-
-    config = SimulationConfig(
-        name=sim_data.get("name", "Simulation"),
-        agents=agent_configs,
-        steps=sim_data.get("total_steps", 10),
-        initial_prompt=config_data.get("initial_prompt", ""),
-        model=config_data.get("model", "openai/gpt-4o-mini"),
-        apps=apps_config,
-    )
-
-    # Create simulation instance
-    sim = Simulation.from_config(config)
-    sim.id = simulation_id
-    sim.current_step = sim_data.get("current_step", 0)
-    sim.status = SimulationStatus(sim_data.get("status", "pending"))
-
-    # Match agent IDs with stored agents
-    for i, agent in enumerate(sim.agents):
-        if i < len(agents_data):
-            agent.id = agents_data[i].get("id", agent.id)
 
     # Initialize apps if configured
     if apps_config:
         await sim.initialize_apps()
+
+    # Start episode automatically if apps configured and no episode running
+    if sim.app_manager is not None and sim.episode_id is None:
+        sim.start_episode()
 
     # Connect injection manager for external agents
     sim.injection_manager = _get_injection_manager(simulation_id)
@@ -837,3 +887,179 @@ async def get_simulation_coordination_metrics(simulation_id: str):
             user_confusion_count=confusion_count,
             computed_at=datetime.now(UTC),
         )
+
+
+# =============================================================================
+# Episode Endpoints
+# =============================================================================
+
+
+def _get_or_create_runner(simulation_id: str) -> "Simulation":
+    """Get or create a simulation runner for episode management.
+
+    Uses the _active_runners cache for efficiency. Returns cached runner
+    if available, otherwise reconstructs from DB state.
+    """
+    if simulation_id in _active_runners:
+        return _active_runners[simulation_id]
+
+    sim = _reconstruct_simulation(simulation_id)
+    _active_runners[simulation_id] = sim
+    return sim
+
+
+@router.post(
+    "/simulations/{simulation_id}/episode/start",
+    response_model=EpisodeStartResponse
+)
+async def start_simulation_episode(simulation_id: str):
+    """Start a new episode for a simulation.
+
+    An episode tracks a sequence of app actions with reward accumulation.
+    Use this to track distinct interaction periods within a simulation.
+    """
+    runner = _get_or_create_runner(simulation_id)
+
+    # Check if there's already an active episode
+    if runner.episode_id is not None and not runner._episode_terminated and not runner._episode_truncated:
+        raise HTTPException(status_code=409, detail={
+            "code": "EPISODE_ALREADY_ACTIVE",
+            "message": f"Episode '{runner.episode_id}' is already active. End it first.",
+        })
+
+    episode_id = runner.start_episode()
+
+    return EpisodeStartResponse(
+        simulation_id=simulation_id,
+        episode_id=episode_id,
+        message="Episode started",
+    )
+
+
+@router.post(
+    "/simulations/{simulation_id}/episode/end",
+    response_model=EpisodeEndResponse
+)
+async def end_simulation_episode(
+    simulation_id: str,
+    request: EpisodeEndRequest = EpisodeEndRequest(),
+):
+    """End the current episode for a simulation.
+
+    Args:
+        terminated: True if goal was achieved (success)
+        truncated: True if ending due to max steps or manual stop
+    """
+    runner = _get_or_create_runner(simulation_id)
+
+    if runner.episode_id is None:
+        raise HTTPException(status_code=404, detail={
+            "code": "NO_ACTIVE_EPISODE",
+            "message": "No active episode to end",
+        })
+
+    episode_id = runner.episode_id
+    result = runner.end_episode(
+        terminated=request.terminated,
+        truncated=request.truncated,
+    )
+
+    return EpisodeEndResponse(
+        simulation_id=simulation_id,
+        episode_id=episode_id,
+        action_count=result["action_count"],
+        turn_count=result["turn_count"],
+        total_reward=result["total_reward"],
+        terminated=result["terminated"],
+        truncated=result["truncated"],
+        message="Episode ended",
+    )
+
+
+@router.get(
+    "/simulations/{simulation_id}/episodes",
+    response_model=EpisodeListResponse
+)
+async def list_simulation_episodes(
+    simulation_id: str,
+    limit: int = Query(50, ge=1, le=100),
+):
+    """List all episodes for a simulation.
+
+    Returns episodes in reverse chronological order (newest first).
+    """
+    repo = get_repo()
+
+    sim = repo.get_simulation(simulation_id)
+    if not sim:
+        raise HTTPException(status_code=404, detail={
+            "code": "SIMULATION_NOT_FOUND",
+            "message": f"Simulation '{simulation_id}' not found",
+        })
+
+    episodes = repo.get_episodes_for_simulation(simulation_id, limit=limit)
+
+    return EpisodeListResponse(
+        simulation_id=simulation_id,
+        episodes=[EpisodeResponse(**ep) for ep in episodes],
+        total=len(episodes),
+    )
+
+
+@router.get(
+    "/simulations/{simulation_id}/episode/current",
+    response_model=EpisodeResponse
+)
+async def get_current_episode(simulation_id: str):
+    """Get the current active episode for a simulation.
+
+    Returns 404 if no episode is active.
+    """
+    repo = get_repo()
+
+    sim = repo.get_simulation(simulation_id)
+    if not sim:
+        raise HTTPException(status_code=404, detail={
+            "code": "SIMULATION_NOT_FOUND",
+            "message": f"Simulation '{simulation_id}' not found",
+        })
+
+    episode = repo.get_active_episode(simulation_id)
+    if not episode:
+        raise HTTPException(status_code=404, detail={
+            "code": "NO_ACTIVE_EPISODE",
+            "message": "No active episode for this simulation",
+        })
+
+    return EpisodeResponse(**episode)
+
+
+@router.get(
+    "/simulations/{simulation_id}/episodes/{episode_id}",
+    response_model=EpisodeResponse
+)
+async def get_episode(simulation_id: str, episode_id: str):
+    """Get a specific episode by ID."""
+    repo = get_repo()
+
+    sim = repo.get_simulation(simulation_id)
+    if not sim:
+        raise HTTPException(status_code=404, detail={
+            "code": "SIMULATION_NOT_FOUND",
+            "message": f"Simulation '{simulation_id}' not found",
+        })
+
+    episode = repo.get_episode(episode_id)
+    if not episode:
+        raise HTTPException(status_code=404, detail={
+            "code": "EPISODE_NOT_FOUND",
+            "message": f"Episode '{episode_id}' not found",
+        })
+
+    if episode["simulation_id"] != simulation_id:
+        raise HTTPException(status_code=404, detail={
+            "code": "EPISODE_NOT_FOUND",
+            "message": f"Episode '{episode_id}' not found in simulation '{simulation_id}'",
+        })
+
+    return EpisodeResponse(**episode)
