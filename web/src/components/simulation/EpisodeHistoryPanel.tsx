@@ -15,23 +15,65 @@ import { computeStateDiff, formatValue, getDiffSummary } from '@/lib/state-diff'
 
 interface EpisodeHistoryPanelProps {
   simulationId: string
-  appId: string
+  appId?: string
   className?: string
 }
 
-export function EpisodeHistoryPanel({ simulationId, appId, className }: EpisodeHistoryPanelProps) {
+export function EpisodeHistoryPanel({ simulationId, appId: propAppId, className }: EpisodeHistoryPanelProps) {
   const [selectedEpisodeId, setSelectedEpisodeId] = useState<string | null>(null)
   const [selectedSnapshot, setSelectedSnapshot] = useState<StateSnapshot | null>(null)
   const [viewMode, setViewMode] = useState<'full' | 'diff'>('diff')
+  const [selectedAppId, _setSelectedAppId] = useState<string | null>(propAppId ?? null)
 
-  // Fetch episodes
-  const { data: episodesData, isLoading } = useQuery({
-    queryKey: ['episodes', simulationId, appId],
-    queryFn: () => api.listEpisodes(simulationId, appId, true),
-    refetchInterval: 5000, // Auto-refresh every 5 seconds
+  // Fetch apps for this simulation
+  const { data: appsData } = useQuery({
+    queryKey: ['simulation', simulationId, 'apps'],
+    queryFn: () => api.getSimulationApps(simulationId),
+    enabled: !!simulationId && !propAppId,
   })
 
-  const episodes = episodesData?.episodes ?? []
+  // Use provided appId or first app from simulation
+  const appId = propAppId ?? selectedAppId ?? appsData?.apps?.[0]?.app_id
+
+  // Fetch app-level episodes (environment API)
+  const { data: appEpisodesData, isLoading: isLoadingAppEpisodes } = useQuery({
+    queryKey: ['episodes', simulationId, appId],
+    queryFn: () => api.listEpisodes(simulationId, appId!, true),
+    enabled: !!simulationId && !!appId,
+    refetchInterval: 5000,
+  })
+
+  // Fetch simulation-level episodes (runner API) as fallback
+  const { data: simEpisodesData, isLoading: isLoadingSimEpisodes } = useQuery({
+    queryKey: ['simulation-episodes', simulationId],
+    queryFn: () => api.listSimulationEpisodes(simulationId),
+    enabled: !!simulationId,
+    refetchInterval: 5000,
+  })
+
+  const isLoading = isLoadingAppEpisodes || isLoadingSimEpisodes
+
+  // Use app episodes if available, otherwise use simulation episodes
+  // Transform simulation episodes to match the expected format
+  const episodes = useMemo(() => {
+    if (appEpisodesData?.episodes && appEpisodesData.episodes.length > 0) {
+      return appEpisodesData.episodes
+    }
+    // Transform simulation-level episodes to match app-level format
+    if (simEpisodesData?.episodes) {
+      return simEpisodesData.episodes.map((ep) => ({
+        episode_id: ep.id,
+        started_at: ep.started_at,
+        ended_at: ep.ended_at,
+        step_count: ep.action_count + ep.turn_count,
+        total_reward: ep.total_reward,
+        terminated: ep.terminated,
+        truncated: ep.truncated,
+        snapshots: [], // Simulation episodes don't have snapshots
+      }))
+    }
+    return []
+  }, [appEpisodesData, simEpisodesData])
   const currentEpisode = useMemo(
     () => selectedEpisodeId
       ? episodes.find((e) => e.episode_id === selectedEpisodeId)

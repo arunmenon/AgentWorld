@@ -37,6 +37,7 @@ import {
   AgentInjector,
   EvaluationPanel,
   AppsPanel,
+  EpisodeHistoryPanel,
   type Message,
   type Memory,
 } from '@/components/simulation'
@@ -459,6 +460,9 @@ export default function SimulationDetail() {
           </Card>
         </div>
       </div>
+
+      {/* Episode History Section */}
+      <EpisodeHistoryPanel simulationId={id!} />
 
       {/* Advanced Tools Section */}
       <div className={`grid gap-6 ${hasDualControlRoles ? 'lg:grid-cols-4' : 'lg:grid-cols-3'}`}>

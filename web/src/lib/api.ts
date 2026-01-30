@@ -88,6 +88,23 @@ export interface Agent {
   created_at: string
 }
 
+export type MessageType = 'message' | 'episode_reset' | 'episode_step' | 'episode_close'
+
+export interface EpisodeEventMetadata {
+  app_id?: string
+  episode_id?: string
+  episode_step?: number
+  agent_id?: string
+  action?: string
+  params?: Record<string, unknown>
+  reward?: number
+  terminated?: boolean
+  truncated?: boolean
+  status?: 'running' | 'terminated' | 'truncated'
+  agents?: string[]
+  max_steps?: number
+}
+
 export interface Message {
   id: string
   simulation_id: string
@@ -98,6 +115,8 @@ export interface Message {
   content: string
   step: number
   timestamp: string | null
+  message_type?: MessageType
+  metadata?: EpisodeEventMetadata | null
 }
 
 export interface Persona {
@@ -1316,5 +1335,45 @@ export const api = {
     return request<TrajectoryResponse>(
       `/simulations/${simulationId}/apps/${appId}/episodes/${episodeId}/trajectory`
     )
+  },
+
+  // =========================================================================
+  // Simulation-Level Episode Endpoints (Runner-based episodes)
+  // =========================================================================
+
+  /** List all episodes for a simulation (runner-level, not app-level) */
+  listSimulationEpisodes: async (simulationId: string, limit: number = 50) => {
+    return request<{
+      simulation_id: string
+      episodes: Array<{
+        id: string
+        simulation_id: string
+        started_at: string
+        ended_at: string | null
+        action_count: number
+        turn_count: number
+        total_reward: number
+        terminated: boolean
+        truncated: boolean
+        metadata: Record<string, unknown> | null
+      }>
+      total: number
+    }>(`/simulations/${simulationId}/episodes?limit=${limit}`)
+  },
+
+  /** Get a specific simulation episode */
+  getSimulationEpisode: async (simulationId: string, episodeId: string) => {
+    return request<{
+      id: string
+      simulation_id: string
+      started_at: string
+      ended_at: string | null
+      action_count: number
+      turn_count: number
+      total_reward: number
+      terminated: boolean
+      truncated: boolean
+      metadata: Record<string, unknown> | null
+    }>(`/simulations/${simulationId}/episodes/${episodeId}`)
   },
 }
