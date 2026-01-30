@@ -87,6 +87,14 @@ class Simulation:
     # Dual-control coordination tracking (ADR-020.1)
     _coordination_tracker: "CoordinationTracker | None" = field(default=None, repr=False)
 
+    # Episode tracking for environment-style interactions
+    _episode_id: str | None = field(default=None, repr=False)
+    _episode_action_count: int = field(default=0, repr=False)  # App actions only
+    _episode_turn_count: int = field(default=0, repr=False)    # All agent messages
+    _cumulative_reward: float = field(default=0.0, repr=False)
+    _episode_terminated: bool = field(default=False, repr=False)
+    _episode_truncated: bool = field(default=False, repr=False)
+
     @classmethod
     def from_config(cls, config: SimulationConfig) -> "Simulation":
         """Create a simulation from configuration.
@@ -204,13 +212,17 @@ class Simulation:
         # Add app instructions to agent system prompts
         app_prompt = self._app_manager.get_available_apps_prompt()
         if app_prompt:
+            # Build example using actual app_id
+            app_ids = self._app_manager.get_app_ids()
+            example_app_id = app_ids[0] if app_ids else "app_name"
+
             # Add final mandatory instruction
             final_instruction = (
                 "\n\n---\n"
                 "CRITICAL OUTPUT REQUIREMENT: When you want to perform an action like transferring money, "
                 "you MUST include the APP_ACTION directive in your response. "
                 "Saying 'I will send money' does NOTHING. You must ACTUALLY output:\n"
-                'APP_ACTION: paypal_test.transfer(to="recipient_name", amount=50)\n'
+                f'APP_ACTION: {example_app_id}.transfer(to="recipient_name", amount=50)\n'
                 "Include this on its own line in your message. This is mandatory, not optional.\n"
                 "---"
             )
@@ -523,13 +535,15 @@ class Simulation:
 
         # Add few-shot example if app manager has apps
         if self._app_manager is not None and self._app_manager.get_app_ids():
+            app_ids = self._app_manager.get_app_ids()
+            example_app_id = app_ids[0] if app_ids else "app_name"
             lines.append("")
             lines.append("---")
             lines.append("EXAMPLE of a proper response when paying someone:")
             lines.append('"""')
             lines.append("Hey Alice, sending the money now!")
             lines.append("")
-            lines.append('APP_ACTION: paypal_test.transfer(to="alice", amount=50)')
+            lines.append(f'APP_ACTION: {example_app_id}.transfer(to="alice", amount=50)')
             lines.append('"""')
             lines.append("")
             lines.append("Your response MUST follow this format if you're performing an action.")
@@ -673,7 +687,7 @@ class Simulation:
                 goal_achieved = True
                 self._goal_achieved = True
                 self._goal_achieved_step = self.current_step
-                self.emitter.emit("goal_achieved", {
+                self.emitter._emit("goal_achieved", {
                     "step": self.current_step,
                     "conditions_met": goal_result.conditions_met,
                     "details": goal_result.details,
@@ -681,6 +695,12 @@ class Simulation:
                 logger.info(
                     f"Goal achieved at step {self.current_step}: {goal_result.details}"
                 )
+
+                # Terminate episode with success reward
+                if self._episode_id is not None:
+                    # Add completion reward bonus
+                    self._cumulative_reward += 1.0
+                    self.end_episode(terminated=True, truncated=False)
 
         # Emit step completed event
         self.emitter.step_completed(
@@ -711,6 +731,10 @@ class Simulation:
                 "goal_achieved": self._goal_achieved,
                 "goal_achieved_step": self._goal_achieved_step,
             })
+
+            # Truncate episode (max steps reached without goal)
+            if self._episode_id is not None and not self._episode_terminated:
+                self.end_episode(terminated=False, truncated=True)
 
         # Update state
         self.repository.update_simulation(self.id, {
@@ -773,39 +797,16 @@ class Simulation:
                 cleaned_content, execution_results = await self._app_manager.process_message(
                     agent.id, message.content
                 )
-                # Update message content if actions were extracted
                 if execution_results:
-                    # Keep the cleaned message content (without action directives)
                     message.content = cleaned_content
-                    # Log action results for goal evaluation
                     for result in execution_results:
-                        self.log_action(
-                            app_id=result.action.app_id,
-                            action=result.action.action,
-                            success=result.result.success,
-                            params=result.action.params,
-                            result=result.result.data if hasattr(result.result, 'data') else None,
-                        )
-                        # Track app action for coordination completion (ADR-020.1)
-                        if result.result.success:
-                            self._track_app_action(
-                                agent_id=agent.id,
-                                app_id=result.action.app_id,
-                                action_name=result.action.action,
-                                params=result.action.params,
-                            )
-                            logger.info(
-                                f"App action {result.action.app_id}.{result.action.action} "
-                                f"succeeded for {agent.name}"
-                            )
-                        else:
-                            logger.warning(
-                                f"App action {result.action.app_id}.{result.action.action} "
-                                f"failed for {agent.name}: {result.result.error}"
-                            )
+                        self._process_action_result(agent.id, agent.name, result)
 
             # Emit agent responded event
             self.emitter.agent_responded(agent.id, agent.name, message.content)
+
+            # Increment episode turn count
+            self._increment_episode_turn(agent.id, agent.name)
 
             # Track message
             self._messages.append(message)
@@ -919,6 +920,9 @@ class Simulation:
                 # Emit agent responded event
                 self.emitter.agent_responded(agent.id, agent.name, result.data.content)
 
+                # Increment episode turn count
+                self._increment_episode_turn(agent.id, agent.name)
+
         # ===== PHASE 3: COMMIT =====
         # Apply all actions atomically
         async def commit_message(agent_id: str, message: Message) -> Message:
@@ -931,35 +935,12 @@ class Simulation:
                 cleaned_content, execution_results = await self._app_manager.process_message(
                     agent_id, message.content
                 )
-                # Update message content if actions were extracted
                 if execution_results:
                     message.content = cleaned_content
-                    # Log action results for goal evaluation
+                    agent = self.get_agent(agent_id)
+                    agent_name = agent.name if agent else agent_id
                     for exec_result in execution_results:
-                        self.log_action(
-                            app_id=exec_result.action.app_id,
-                            action=exec_result.action.action,
-                            success=exec_result.result.success,
-                            params=exec_result.action.params,
-                            result=exec_result.result.data if hasattr(exec_result.result, 'data') else None,
-                        )
-                        # Track app action for coordination completion (ADR-020.1)
-                        if exec_result.result.success:
-                            self._track_app_action(
-                                agent_id=agent_id,
-                                app_id=exec_result.action.app_id,
-                                action_name=exec_result.action.action,
-                                params=exec_result.action.params,
-                            )
-                            logger.info(
-                                f"App action {exec_result.action.app_id}.{exec_result.action.action} "
-                                f"succeeded for agent {agent_id}"
-                            )
-                        else:
-                            logger.warning(
-                                f"App action {exec_result.action.app_id}.{exec_result.action.action} "
-                                f"failed for agent {agent_id}: {exec_result.result.error}"
-                            )
+                        self._process_action_result(agent_id, agent_name, exec_result)
 
             self._messages.append(message)
             self._save_message(message)
@@ -1161,6 +1142,59 @@ class Simulation:
             return self._coordination_tracker.get_metrics()
         return None
 
+    def _process_action_result(
+        self,
+        agent_id: str,
+        agent_name: str,
+        exec_result: Any,
+    ) -> None:
+        """Process a single app action execution result.
+
+        Handles logging, coordination tracking, and episode tracking
+        for both successful and failed actions.
+
+        Args:
+            agent_id: ID of the agent performing the action
+            agent_name: Name of the agent (for logging)
+            exec_result: Execution result from app manager
+        """
+        self.log_action(
+            app_id=exec_result.action.app_id,
+            action=exec_result.action.action,
+            success=exec_result.result.success,
+            params=exec_result.action.params,
+            result=exec_result.result.data if hasattr(exec_result.result, 'data') else None,
+        )
+
+        if exec_result.result.success:
+            self._track_app_action(
+                agent_id=agent_id,
+                app_id=exec_result.action.app_id,
+                action_name=exec_result.action.action,
+                params=exec_result.action.params,
+            )
+            self._increment_episode_action(
+                app_id=exec_result.action.app_id,
+                action_name=exec_result.action.action,
+                success=True,
+                params=exec_result.action.params,
+            )
+            logger.info(
+                f"App action {exec_result.action.app_id}.{exec_result.action.action} "
+                f"succeeded for {agent_name}"
+            )
+        else:
+            self._increment_episode_action(
+                app_id=exec_result.action.app_id,
+                action_name=exec_result.action.action,
+                success=False,
+                params=exec_result.action.params,
+            )
+            logger.warning(
+                f"App action {exec_result.action.app_id}.{exec_result.action.action} "
+                f"failed for {agent_name}: {exec_result.result.error}"
+            )
+
     def _track_agent_message(self, agent_id: str, message_text: str) -> None:
         """Track an agent message for coordination detection.
 
@@ -1220,6 +1254,210 @@ class Simulation:
             )
             # Persist coordination event to database
             self._persist_coordination_event(event, params)
+
+    # =========================================================================
+    # Episode Lifecycle Methods
+    # =========================================================================
+
+    def start_episode(self) -> str:
+        """Start a new episode for this simulation.
+
+        Initializes episode tracking state and persists to database.
+
+        Returns:
+            Episode ID
+        """
+        self._episode_id = str(uuid.uuid4())[:8]
+        self._episode_action_count = 0
+        self._episode_turn_count = 0
+        self._cumulative_reward = 0.0
+        self._episode_terminated = False
+        self._episode_truncated = False
+
+        # Persist to database
+        self.repository.create_episode({
+            "id": self._episode_id,
+            "simulation_id": self.id,
+            "started_at": datetime.now(),
+            "action_count": 0,
+            "turn_count": 0,
+            "total_reward": 0.0,
+        })
+
+        # Emit episode started event
+        self.emitter._emit("episode_started", {
+            "episode_id": self._episode_id,
+            "simulation_id": self.id,
+        })
+
+        logger.info(f"Started episode {self._episode_id} for simulation {self.id}")
+        return self._episode_id
+
+    def end_episode(self, terminated: bool = False, truncated: bool = False) -> dict[str, Any]:
+        """End the current episode.
+
+        Args:
+            terminated: True if goal was achieved
+            truncated: True if max steps reached without goal
+
+        Returns:
+            Episode result dict with id, actions, turns, reward, terminated, truncated
+        """
+        self._episode_terminated = terminated
+        self._episode_truncated = truncated
+
+        result = {
+            "episode_id": self._episode_id,
+            "action_count": self._episode_action_count,
+            "turn_count": self._episode_turn_count,
+            "total_reward": self._cumulative_reward,
+            "terminated": terminated,
+            "truncated": truncated,
+        }
+
+        # Persist final state to database
+        if self._episode_id:
+            self.repository.update_episode(self._episode_id, {
+                "ended_at": datetime.now(),
+                "action_count": self._episode_action_count,
+                "turn_count": self._episode_turn_count,
+                "total_reward": self._cumulative_reward,
+                "terminated": terminated,
+                "truncated": truncated,
+            })
+
+        # Emit episode ended event
+        self.emitter._emit("episode_ended", result)
+
+        logger.info(
+            f"Ended episode {self._episode_id}: "
+            f"actions={self._episode_action_count}, turns={self._episode_turn_count}, "
+            f"reward={self._cumulative_reward}, terminated={terminated}, truncated={truncated}"
+        )
+
+        return result
+
+    @property
+    def episode_id(self) -> str | None:
+        """Get current episode ID."""
+        return self._episode_id
+
+    @property
+    def episode_action_count(self) -> int:
+        """Get current episode action count (app actions only)."""
+        return self._episode_action_count
+
+    @property
+    def episode_turn_count(self) -> int:
+        """Get current episode turn count (all agent messages)."""
+        return self._episode_turn_count
+
+    @property
+    def cumulative_reward(self) -> float:
+        """Get cumulative reward for current episode."""
+        return self._cumulative_reward
+
+    def _calculate_action_reward(
+        self,
+        app_id: str,
+        action_name: str,
+        success: bool,
+        params: dict[str, Any] | None = None,
+    ) -> float:
+        """Calculate reward for an app action.
+
+        Default implementation gives +0.1 for successful actions.
+        Can be overridden or extended for custom reward functions.
+
+        Args:
+            app_id: App ID
+            action_name: Action name
+            success: Whether action succeeded
+            params: Action parameters
+
+        Returns:
+            Reward value
+        """
+        if not success:
+            return -0.1  # Small penalty for failed actions
+        return 0.1  # Small reward for successful actions
+
+    def _increment_episode_action(
+        self,
+        app_id: str,
+        action_name: str,
+        success: bool,
+        params: dict[str, Any] | None = None,
+    ) -> None:
+        """Increment episode action count and accumulate reward.
+
+        Called after each app action execution.
+
+        Args:
+            app_id: App ID
+            action_name: Action name
+            success: Whether action succeeded
+            params: Action parameters
+        """
+        if self._episode_id is None:
+            return
+
+        self._episode_action_count += 1
+        reward = self._calculate_action_reward(app_id, action_name, success, params)
+        self._cumulative_reward += reward
+
+        # Save episode event to messages table
+        event_id = str(uuid.uuid4())[:8]
+        event_data = {
+            "id": event_id,
+            "simulation_id": self.id,
+            "sender_id": None,  # System event
+            "content": f"Episode action: {app_id}.{action_name} (reward: {reward})",
+            "step": self.current_step,
+            "message_type": "episode_action",
+            "metadata": {
+                "episode_id": self._episode_id,
+                "action_number": self._episode_action_count,
+                "turn_number": self._episode_turn_count,
+                "app_id": app_id,
+                "action": action_name,
+                "reward": reward,
+                "cumulative_reward": self._cumulative_reward,
+            },
+        }
+        self.repository.save_message(event_data)
+
+    def _increment_episode_turn(self, agent_id: str, agent_name: str) -> None:
+        """Increment episode turn count.
+
+        Called after each agent message.
+
+        Args:
+            agent_id: Agent ID
+            agent_name: Agent name
+        """
+        if self._episode_id is None:
+            return
+
+        self._episode_turn_count += 1
+
+        # Save episode turn event to messages table
+        event_id = str(uuid.uuid4())[:8]
+        event_data = {
+            "id": event_id,
+            "simulation_id": self.id,
+            "sender_id": None,  # System event
+            "content": f"Episode turn: {agent_name}",
+            "step": self.current_step,
+            "message_type": "episode_turn",
+            "metadata": {
+                "episode_id": self._episode_id,
+                "turn_number": self._episode_turn_count,
+                "agent_id": agent_id,
+                "agent_name": agent_name,
+            },
+        }
+        self.repository.save_message(event_data)
 
     def _persist_coordination_event(
         self,
@@ -1307,6 +1545,10 @@ class Simulation:
         # Initialize apps if not already done (per ADR-017)
         if self._app_manager is None and self.config is not None:
             await self.initialize_apps()
+
+        # Start episode automatically if apps are configured
+        if self._app_manager is not None and self._episode_id is None:
+            self.start_episode()
 
         # Initialize coordination tracker for dual-control tasks (ADR-020.1)
         self._initialize_coordination_tracker()
