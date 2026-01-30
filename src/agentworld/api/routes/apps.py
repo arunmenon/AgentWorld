@@ -325,6 +325,36 @@ def _get_env_key(simulation_id: str, app_id: str) -> str:
     return f"{simulation_id}:{app_id}"
 
 
+def _save_episode_event_message(
+    repo: "Repository",
+    simulation_id: str,
+    app_id: str,
+    message_type: str,
+    content: str,
+    step: int,
+    metadata: dict,
+) -> None:
+    """Save an episode event as a message in the conversation stream."""
+    import uuid
+    from datetime import datetime
+
+    message_data = {
+        "id": str(uuid.uuid4())[:8],
+        "simulation_id": simulation_id,
+        "sender_id": None,  # Episode events don't have a sender agent
+        "receiver_id": None,
+        "content": content,
+        "step": step,
+        "timestamp": datetime.utcnow().isoformat(),
+        "message_type": message_type,
+        "metadata": {
+            "app_id": app_id,
+            **metadata,
+        },
+    }
+    repo.save_message(message_data)
+
+
 @router.post(
     "/simulations/{simulation_id}/apps/{app_id}/env/reset",
     response_model=EnvResetResponse,
@@ -371,6 +401,8 @@ async def reset_app_environment(
             app=app,
             max_steps=request.max_steps,
             track_history=True,
+            repository=repo,
+            simulation_id=simulation_id,
         )
         _env_wrappers[env_key] = env
     else:
@@ -392,8 +424,27 @@ async def reset_app_environment(
             "message": f"Failed to reset environment: {str(e)}",
         })
 
+    # Get current step from simulation
+    current_step = sim.get("current_step", 0)
+
+    # Save episode reset event to conversation stream
+    episode_id = result.info.get("episode_id", "")
+    _save_episode_event_message(
+        repo=repo,
+        simulation_id=simulation_id,
+        app_id=app_id,
+        message_type="episode_reset",
+        content=f"Episode started: {episode_id}",
+        step=current_step,
+        metadata={
+            "episode_id": episode_id,
+            "agents": request.agents,
+            "max_steps": request.max_steps,
+        },
+    )
+
     return EnvResetResponse(
-        episode_id=result.info.get("episode_id", ""),
+        episode_id=episode_id,
         observation=result.observation,
         info=result.info,
     )
@@ -413,6 +464,7 @@ async def step_app_environment(
     The environment must be reset before stepping. Returns the new
     observation, reward, and episode termination status.
     """
+    repo = get_repo()
     env_key = _get_env_key(simulation_id, app_id)
     env = _env_wrappers.get(env_key)
 
@@ -439,6 +491,43 @@ async def step_app_environment(
             "code": "STEP_FAILED",
             "message": f"Failed to execute step: {str(e)}",
         })
+
+    # Get current step from simulation
+    sim = repo.get_simulation(simulation_id)
+    current_step = sim.get("current_step", 0) if sim else 0
+
+    # Build action description
+    import json
+    params_str = json.dumps(request.params) if request.params else "{}"
+    action_desc = f"{request.action}({params_str})"
+
+    # Determine status
+    status = "running"
+    if result.terminated:
+        status = "terminated"
+    elif result.truncated:
+        status = "truncated"
+
+    # Save episode step event to conversation stream
+    _save_episode_event_message(
+        repo=repo,
+        simulation_id=simulation_id,
+        app_id=app_id,
+        message_type="episode_step",
+        content=action_desc,
+        step=current_step,
+        metadata={
+            "episode_id": env.episode_id,
+            "episode_step": env.step_count,
+            "agent_id": request.agent_id,
+            "action": request.action,
+            "params": request.params,
+            "reward": result.reward,
+            "terminated": result.terminated,
+            "truncated": result.truncated,
+            "status": status,
+        },
+    )
 
     return EnvStepResponse(
         observation=result.observation,
@@ -517,62 +606,46 @@ async def list_app_episodes(
     """List all episodes for an app environment.
 
     Returns completed episodes and optionally the current active episode.
+    Reads from database for persistence across server restarts.
     """
-    env_key = _get_env_key(simulation_id, app_id)
-    env = _env_wrappers.get(env_key)
+    import json
+    from datetime import datetime
 
-    if env is None:
-        return EpisodeListResponse(episodes=[], total=0)
+    repo = get_repo()
+
+    # Get episodes from database
+    db_episodes = repo.get_episodes_for_simulation(simulation_id, app_id=app_id)
 
     episodes = []
+    for ep in db_episodes:
+        # Skip active episodes if not requested
+        if not include_current and ep.get("ended_at") is None:
+            continue
 
-    # Add completed episodes
-    for ep in env.get_all_episodes():
+        # Parse snapshots from JSON
+        snapshots_data = ep.get("snapshots") or []
+        snapshots = [
+            StateSnapshotResponse(
+                step=s.get("step", 0),
+                timestamp=datetime.fromisoformat(s["timestamp"]) if isinstance(s.get("timestamp"), str) else s.get("timestamp"),
+                state=s.get("state", {}),
+                action=s.get("action"),
+                params=s.get("params"),
+                reward=s.get("reward", 0.0),
+            )
+            for s in snapshots_data
+        ]
+
         episodes.append(EpisodeHistoryResponse(
-            episode_id=ep.episode_id,
-            started_at=ep.started_at,
-            ended_at=ep.ended_at,
-            snapshots=[
-                StateSnapshotResponse(
-                    step=s.step,
-                    timestamp=s.timestamp,
-                    state=s.state,
-                    action=s.action,
-                    params=s.params,
-                    reward=s.reward,
-                )
-                for s in ep.snapshots
-            ],
-            terminated=ep.terminated,
-            truncated=ep.truncated,
-            total_reward=ep.total_reward,
-            step_count=ep.step_count,
+            episode_id=ep["id"],
+            started_at=datetime.fromisoformat(ep["started_at"]) if isinstance(ep.get("started_at"), str) else ep.get("started_at"),
+            ended_at=datetime.fromisoformat(ep["ended_at"]) if isinstance(ep.get("ended_at"), str) and ep.get("ended_at") else None,
+            snapshots=snapshots,
+            terminated=ep.get("terminated", False),
+            truncated=ep.get("truncated", False),
+            total_reward=ep.get("total_reward", 0.0),
+            step_count=ep.get("action_count", 0),
         ))
-
-    # Include current episode if requested and active
-    if include_current and env.is_active:
-        current = env.get_episode_history()
-        if current:
-            episodes.append(EpisodeHistoryResponse(
-                episode_id=current.episode_id,
-                started_at=current.started_at,
-                ended_at=current.ended_at,
-                snapshots=[
-                    StateSnapshotResponse(
-                        step=s.step,
-                        timestamp=s.timestamp,
-                        state=s.state,
-                        action=s.action,
-                        params=s.params,
-                        reward=s.reward,
-                    )
-                    for s in current.snapshots
-                ],
-                terminated=current.terminated,
-                truncated=current.truncated,
-                total_reward=current.total_reward,
-                step_count=current.step_count,
-            ))
 
     return EpisodeListResponse(episodes=episodes, total=len(episodes))
 
@@ -589,42 +662,42 @@ async def get_episode_history(
     """Get detailed history for a specific episode.
 
     Returns all state snapshots, actions, and rewards for the episode.
+    Reads from database for persistence across server restarts.
     """
-    env_key = _get_env_key(simulation_id, app_id)
-    env = _env_wrappers.get(env_key)
+    from datetime import datetime
 
-    if env is None:
-        raise HTTPException(status_code=404, detail={
-            "code": "ENV_NOT_FOUND",
-            "message": "No environment wrapper found for this app.",
-        })
+    repo = get_repo()
+    ep = repo.get_episode(episode_id)
 
-    history = env.get_episode_history(episode_id)
-    if history is None:
+    if ep is None:
         raise HTTPException(status_code=404, detail={
             "code": "EPISODE_NOT_FOUND",
             "message": f"Episode '{episode_id}' not found.",
         })
 
+    # Parse snapshots from JSON
+    snapshots_data = ep.get("snapshots") or []
+    snapshots = [
+        StateSnapshotResponse(
+            step=s.get("step", 0),
+            timestamp=datetime.fromisoformat(s["timestamp"]) if isinstance(s.get("timestamp"), str) else s.get("timestamp"),
+            state=s.get("state", {}),
+            action=s.get("action"),
+            params=s.get("params"),
+            reward=s.get("reward", 0.0),
+        )
+        for s in snapshots_data
+    ]
+
     return EpisodeHistoryResponse(
-        episode_id=history.episode_id,
-        started_at=history.started_at,
-        ended_at=history.ended_at,
-        snapshots=[
-            StateSnapshotResponse(
-                step=s.step,
-                timestamp=s.timestamp,
-                state=s.state,
-                action=s.action,
-                params=s.params,
-                reward=s.reward,
-            )
-            for s in history.snapshots
-        ],
-        terminated=history.terminated,
-        truncated=history.truncated,
-        total_reward=history.total_reward,
-        step_count=history.step_count,
+        episode_id=ep["id"],
+        started_at=datetime.fromisoformat(ep["started_at"]) if isinstance(ep.get("started_at"), str) else ep.get("started_at"),
+        ended_at=datetime.fromisoformat(ep["ended_at"]) if isinstance(ep.get("ended_at"), str) and ep.get("ended_at") else None,
+        snapshots=snapshots,
+        terminated=ep.get("terminated", False),
+        truncated=ep.get("truncated", False),
+        total_reward=ep.get("total_reward", 0.0),
+        step_count=ep.get("action_count", 0),
     )
 
 
@@ -640,33 +713,32 @@ async def get_episode_trajectory(
     """Get (state, action, reward) trajectory for RL training.
 
     Returns the trajectory in a format suitable for reinforcement
-    learning algorithms.
+    learning algorithms. Reads from database for persistence.
     """
-    env_key = _get_env_key(simulation_id, app_id)
-    env = _env_wrappers.get(env_key)
+    repo = get_repo()
+    ep = repo.get_episode(episode_id)
 
-    if env is None:
-        raise HTTPException(status_code=404, detail={
-            "code": "ENV_NOT_FOUND",
-            "message": "No environment wrapper found for this app.",
-        })
-
-    history = env.get_episode_history(episode_id)
-    if history is None:
+    if ep is None:
         raise HTTPException(status_code=404, detail={
             "code": "EPISODE_NOT_FOUND",
             "message": f"Episode '{episode_id}' not found.",
         })
 
+    # Build trajectory from snapshots
+    snapshots_data = ep.get("snapshots") or []
     trajectory = [
-        TrajectoryItem(state=state, action=action, reward=reward)
-        for state, action, reward in history.get_trajectory()
+        TrajectoryItem(
+            state=s.get("state", {}),
+            action=s.get("action"),
+            reward=s.get("reward", 0.0),
+        )
+        for s in snapshots_data
     ]
 
     return TrajectoryResponse(
-        episode_id=history.episode_id,
+        episode_id=ep["id"],
         trajectory=trajectory,
-        total_reward=history.total_reward,
+        total_reward=ep.get("total_reward", 0.0),
     )
 
 

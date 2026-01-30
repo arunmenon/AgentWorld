@@ -480,6 +480,8 @@ class AppEnvironmentWrapper:
         reward_function: Callable[[Any, dict, bool, int], float] | None = None,
         track_history: bool = True,
         termination_checker: Callable[[dict[str, Any]], bool] | None = None,
+        repository: Any | None = None,
+        simulation_id: str | None = None,
     ):
         """Initialize the environment wrapper.
 
@@ -489,12 +491,16 @@ class AppEnvironmentWrapper:
             reward_function: Custom reward function (default: default_reward)
             track_history: Whether to track full state history
             termination_checker: Optional function to check if goal is achieved
+            repository: Optional Repository instance for episode persistence
+            simulation_id: Simulation ID (required if repository is provided)
         """
         self._app = app
         self._max_steps = max_steps
         self._reward_fn = reward_function or default_reward
         self._track_history = track_history
         self._termination_checker = termination_checker
+        self._repository = repository
+        self._simulation_id = simulation_id
 
         # Episode state
         self._episode_id: str | None = None
@@ -503,7 +509,7 @@ class AppEnvironmentWrapper:
         self._truncated: bool = False
         self._cumulative_reward: float = 0.0
 
-        # State history tracking
+        # State history tracking (in-memory, synced to DB if repository provided)
         self._current_episode: EpisodeHistory | None = None
         self._episode_history: list[EpisodeHistory] = []
 
@@ -575,6 +581,8 @@ class AppEnvironmentWrapper:
         if self._current_episode and self._track_history:
             self._current_episode.ended_at = datetime.now(UTC)
             self._episode_history.append(self._current_episode)
+            # Persist to database if repository available
+            self._persist_episode_end(self._current_episode)
 
         # Generate new episode ID
         self._episode_id = str(uuid.uuid4())[:8]
@@ -617,6 +625,9 @@ class AppEnvironmentWrapper:
                 truncated=False,
                 total_reward=0.0,
             )
+
+        # Persist new episode to database
+        self._persist_episode_start()
 
         logger.info(f"Started episode {self._episode_id} for app {self._app.app_id}")
 
@@ -691,6 +702,9 @@ class AppEnvironmentWrapper:
             self._current_episode.terminated = self._terminated
             self._current_episode.truncated = self._truncated
 
+        # Persist to database after each step
+        self._persist_episode_update()
+
         logger.debug(
             f"Episode {self._episode_id} step {self._step_count}: "
             f"{action} -> reward={reward:.3f}, term={self._terminated}, trunc={self._truncated}"
@@ -714,6 +728,8 @@ class AppEnvironmentWrapper:
         if self._current_episode and self._track_history:
             self._current_episode.ended_at = datetime.now(UTC)
             self._episode_history.append(self._current_episode)
+            # Persist to database
+            self._persist_episode_end(self._current_episode)
             logger.info(
                 f"Closed episode {self._episode_id}: "
                 f"{self._step_count} steps, reward={self._cumulative_reward:.3f}"
@@ -817,6 +833,77 @@ class AppEnvironmentWrapper:
                 "app_id": self._app.app_id,
                 "step": self._step_count,
             }
+
+    # ==========================================================================
+    # Persistence Methods
+    # ==========================================================================
+
+    def _persist_episode_start(self) -> None:
+        """Persist new episode to database."""
+        if self._repository is None or self._simulation_id is None:
+            return
+        if self._episode_id is None:
+            return
+
+        try:
+            import json
+            self._repository.create_episode({
+                "id": self._episode_id,
+                "simulation_id": self._simulation_id,
+                "app_id": self._app.app_id,
+                "started_at": datetime.now(UTC),
+                "action_count": 0,
+                "turn_count": 0,
+                "total_reward": 0.0,
+                "terminated": False,
+                "truncated": False,
+                "snapshots_json": json.dumps([
+                    self._current_episode.snapshots[0].to_dict()
+                ]) if self._current_episode else None,
+            })
+            logger.debug(f"Persisted episode start: {self._episode_id}")
+        except Exception as e:
+            logger.warning(f"Failed to persist episode start: {e}")
+
+    def _persist_episode_end(self, episode: EpisodeHistory) -> None:
+        """Persist episode end state to database."""
+        if self._repository is None or self._simulation_id is None:
+            return
+
+        try:
+            import json
+            self._repository.update_episode(episode.episode_id, {
+                "ended_at": episode.ended_at,
+                "action_count": episode.step_count,
+                "turn_count": episode.step_count,  # For app episodes, turn_count = step_count
+                "total_reward": episode.total_reward,
+                "terminated": episode.terminated,
+                "truncated": episode.truncated,
+                "snapshots_json": json.dumps([s.to_dict() for s in episode.snapshots]),
+            })
+            logger.debug(f"Persisted episode end: {episode.episode_id}")
+        except Exception as e:
+            logger.warning(f"Failed to persist episode end: {e}")
+
+    def _persist_episode_update(self) -> None:
+        """Persist current episode state to database (after each step)."""
+        if self._repository is None or self._simulation_id is None:
+            return
+        if self._episode_id is None or self._current_episode is None:
+            return
+
+        try:
+            import json
+            self._repository.update_episode(self._episode_id, {
+                "action_count": self._step_count,
+                "turn_count": self._step_count,
+                "total_reward": self._cumulative_reward,
+                "terminated": self._terminated,
+                "truncated": self._truncated,
+                "snapshots_json": json.dumps([s.to_dict() for s in self._current_episode.snapshots]),
+            })
+        except Exception as e:
+            logger.warning(f"Failed to persist episode update: {e}")
 
     def __repr__(self) -> str:
         """String representation."""
