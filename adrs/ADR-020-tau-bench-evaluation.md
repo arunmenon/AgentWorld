@@ -39,6 +39,7 @@ This ADR adopts patterns from [τ-bench](https://github.com/sierra-research/tau-
 | REQ-20-06 | Scenario Library | Should | Predefined benchmark scenarios |
 | REQ-20-07 | Trajectory Export | Should | Export runs for replay/analysis |
 | REQ-20-08 | Integration with ADR-010 | Must | Complement existing evaluation system |
+| REQ-20-09 | Episode Rewards | Should | Per-action rewards for RL training and debugging |
 
 ## Decision
 
@@ -626,6 +627,184 @@ ADR-020 **complements** ADR-010 (existing evaluation):
 
 ---
 
+## Episode Rewards: Training-Time Scoring
+
+### Why Two Scoring Systems?
+
+ADR-020's **pass^k metric** is designed for **benchmarking** - measuring whether an agent reliably completes tasks. However, it provides only **sparse feedback** (pass/fail at the end of a trial), which is insufficient for:
+
+1. **RL Training**: Policy gradient methods need dense per-action rewards
+2. **Real-time Debugging**: Seeing which specific action caused failure
+3. **Progress Monitoring**: Understanding how far the agent got before failing
+
+To address this, we introduce **episode rewards** as a complementary scoring layer.
+
+### The Two-Layer Scoring Model
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                                                                  │
+│   LAYER 1: Episode Rewards (Training & Debugging)               │
+│   ─────────────────────────────────────────────────             │
+│   • Per-action rewards: +0.1 (success), -0.1 (failure)          │
+│   • Goal completion bonus: +1.0                                  │
+│   • Cumulative reward tracked throughout episode                 │
+│   • Dense signal enables RL training and real-time feedback      │
+│                                                                  │
+│   LAYER 2: Trial Outcome (Benchmarking)                         │
+│   ─────────────────────────────────────────────────             │
+│   • Binary: PASS (goal achieved) or FAIL (goal not achieved)    │
+│   • Partial credit: 0.0-1.0 for failed trials                   │
+│   • pass^k computed across multiple trials                       │
+│   • Sparse signal enables standardized model comparison          │
+│                                                                  │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+### Plain English Explanation
+
+Think of it like **grading a student's math test**:
+
+| Aspect | Episode Rewards | Pass^k Evaluation |
+|--------|-----------------|-------------------|
+| **Analogy** | "Showing your work" | "Final grade" |
+| **Feedback** | Points for each step (+1 correct, -1 error) | Did you get the right answer? |
+| **Timing** | Immediate, during work | At the end |
+| **Purpose** | Helps you learn while working | Measures if you learned the material |
+
+A basketball player uses **practice drills with immediate feedback** (episode rewards) to improve, but their skill is measured by **game win rate** (pass^k).
+
+### When to Use Each
+
+| Scenario | Use Episode Rewards | Use Pass^k |
+|----------|---------------------|------------|
+| Training an RL agent | ✅ Dense signal for learning | |
+| Debugging a failed trial | ✅ See which action failed | |
+| Real-time UI progress bar | ✅ Show cumulative reward | |
+| Comparing two models | | ✅ "Model A: 80%, Model B: 60%" |
+| Publishing benchmarks | | ✅ Standardized metric |
+| Regression testing | | ✅ Did pass rate drop? |
+
+### Implementation
+
+Episode rewards are tracked in the simulation runner with separate counts for actions and turns:
+
+```python
+@dataclass
+class EpisodeState:
+    """Episode tracking within a simulation."""
+    episode_id: str
+    action_count: int = 0     # App actions only (tool use)
+    turn_count: int = 0       # All agent messages
+    cumulative_reward: float = 0.0
+    terminated: bool = False  # Goal achieved
+    truncated: bool = False   # Max steps reached
+
+# Reward calculation (applied per action, not per turn)
+def calculate_action_reward(success: bool) -> float:
+    return 0.1 if success else -0.1
+
+GOAL_COMPLETION_BONUS = 1.0
+```
+
+### Terminology
+
+| Term | Definition | Counted When |
+|------|------------|--------------|
+| **Episode** | Full sequence from start → goal (or max steps) | `start_episode()` to `end_episode()` |
+| **Turn** | Each agent message | Agent sends any message |
+| **Action** | Each app/tool use | Agent executes `APP_ACTION: app.method()` |
+
+Example:
+```
+Episode starts
+  Turn 1: Alice says "Hi Bob, send me $50"           (turn_count: 1)
+  Turn 2: Bob says "Let me check my balance"         (turn_count: 2)
+          → Action: paypal.check_balance()           (action_count: 1, reward: +0.1)
+  Turn 3: Bob says "Sending now"                     (turn_count: 3)
+          → Action: paypal.transfer(to="alice")      (action_count: 2, reward: +0.1)
+  Turn 4: Alice says "Got it!"                       (turn_count: 4)
+  GOAL ACHIEVED                                      (reward: +1.0)
+Episode ends (4 turns, 2 actions, reward: 1.2)
+```
+
+### Mapping Episode to Trial Outcome
+
+At the end of an episode, the outcome maps to trial evaluation:
+
+| Episode State | Trial Outcome | Effect on pass^k |
+|---------------|---------------|------------------|
+| `terminated=True` | PASS | Increments successes (`c`) |
+| `truncated=True` | FAIL | Increments total trials (`n`) |
+| `cumulative_reward` | (informational) | Can correlate with pass rate |
+
+### Reward Customization
+
+The default reward function (+0.1/-0.1) can be customized per task:
+
+```python
+@dataclass
+class TaskRewardConfig:
+    """Custom reward configuration for a task."""
+    action_success_reward: float = 0.1
+    action_failure_penalty: float = -0.1
+    goal_completion_bonus: float = 1.0
+
+    # Optional: action-specific rewards
+    action_rewards: dict[str, float] = field(default_factory=dict)
+    # e.g., {"transfer": 0.5, "check_balance": 0.05}
+```
+
+### API Endpoints
+
+Episode management endpoints (in addition to existing task evaluation):
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| POST | `/simulations/{id}/episode/start` | Start a new episode |
+| POST | `/simulations/{id}/episode/end` | End current episode |
+| GET | `/simulations/{id}/episodes` | List all episodes |
+| GET | `/simulations/{id}/episode/current` | Get active episode state |
+
+### Database Schema
+
+```sql
+-- Episodes table (complements trial_results)
+CREATE TABLE episodes (
+    id TEXT PRIMARY KEY,
+    simulation_id TEXT NOT NULL,
+    started_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    ended_at TIMESTAMP,
+    action_count INTEGER DEFAULT 0,  -- App actions only
+    turn_count INTEGER DEFAULT 0,    -- All agent messages
+    total_reward REAL DEFAULT 0.0,
+    terminated INTEGER DEFAULT 0,    -- Goal achieved
+    truncated INTEGER DEFAULT 0,     -- Max steps reached
+    metadata_json TEXT,
+    FOREIGN KEY (simulation_id) REFERENCES simulations(id)
+);
+```
+
+### Relationship Summary
+
+```
+Episode Rewards ──────► Real-time training signal
+       │
+       │ (at episode end)
+       ▼
+Trial Outcome ────────► Binary PASS/FAIL + partial credit
+       │
+       │ (across k trials)
+       ▼
+Pass^k Metric ────────► Reliability benchmark
+```
+
+Both systems coexist because they serve different purposes:
+- **Episode rewards**: Optimize agent behavior (training)
+- **Pass^k**: Measure agent capability (evaluation)
+
+---
+
 ## Validation Checklist
 
 ### REQ-20-01: Pass^k Metric ✅
@@ -680,6 +859,18 @@ ADR-020 **complements** ADR-010 (existing evaluation):
 | Shopping scenarios | ✅ 9 tasks |
 | Difficulty levels | ✅ easy/medium/hard |
 | TaskSet benchmarks | ✅ 2 benchmark sets |
+
+### REQ-20-09: Episode Rewards ✅
+
+| Test | Result |
+|------|--------|
+| Episode model in database | ✅ `EpisodeModel` in `persistence/models.py` |
+| Episode CRUD in repository | ✅ `create_episode`, `update_episode`, etc. |
+| Episode tracking in runner | ✅ `start_episode()`, `end_episode()` methods |
+| Per-action reward calculation | ✅ `_calculate_action_reward()` (+0.1/-0.1) |
+| Goal completion bonus | ✅ +1.0 added when `terminated=True` |
+| Episode API endpoints | ✅ `/episode/start`, `/episode/end`, `/episodes` |
+| Episode step events persisted | ✅ Saved to messages table with `message_type="episode_step"` |
 
 ---
 

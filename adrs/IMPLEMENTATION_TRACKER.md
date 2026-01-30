@@ -1,8 +1,8 @@
 # AgentWorld Implementation Tracker
 
-> **Last Updated:** 2026-01-28
+> **Last Updated:** 2026-01-30
 > **Current Phase:** Phase 10h - Dual-Control Extension (~95% complete)
-> **Overall Progress:** 19.5/26 ADRs implemented (Phase 1: ADR-003, ADR-004, ADR-008, UI-ADR-005; Phase 2: ADR-005, ADR-006; Phase 3: ADR-009, ADR-011; Phase 4+: ADR-010, ADR-014, ADR-015; Phase 5: ADR-012, ADR-013; Phase 6: UI-ADR-001, UI-ADR-002; Phase 7: UI-ADR-003, UI-ADR-004; Phase 7+: ADR-016, ADR-017; Phase 10f: ADR-020 ~90%; Phase 10g: ADR-021 ✅; Phase 10h: ADR-020.1 ~95%)
+> **Overall Progress:** 19.5/26 ADRs implemented (Phase 1: ADR-003, ADR-004, ADR-008, UI-ADR-005; Phase 2: ADR-005, ADR-006; Phase 3: ADR-009, ADR-011; Phase 4+: ADR-010, ADR-014, ADR-015; Phase 5: ADR-012, ADR-013; Phase 6: UI-ADR-001, UI-ADR-002; Phase 7: UI-ADR-003, UI-ADR-004; Phase 7+: ADR-016, ADR-017; Phase 10f: ADR-020 ~95%; Phase 10g: ADR-021 ✅; Phase 10h: ADR-020.1 ~95%)
 
 ---
 
@@ -1442,7 +1442,7 @@ Phase 10 is split into 6 sub-phases to enable incremental delivery and clear mil
 
 **Goal:** Task-based evaluation with pass^k reliability metrics, goal state verification, fault classification, and policy compliance
 **Exit Criteria:** Tasks can be defined with ground truth, executed k times, scored with pass^k metrics, and failures classified
-**Status:** 🟡 ~90% Complete (missing: checkpoints, test suite, retry execution)
+**Status:** 🟡 ~95% Complete (missing: checkpoints, retry execution, dedicated test suite)
 **Depends On:** Phase 10a (Backend Core), ADR-010 (Evaluation Metrics)
 **ADRs:** ADR-020
 
@@ -1517,6 +1517,25 @@ Phase 10 is split into 6 sub-phases to enable incremental delivery and clear mil
 - [x] Payment benchmark suite (8 predefined tasks)
 - [x] Shopping benchmark suite (9 predefined tasks)
 - [x] Integration with existing ADR-010 evaluation system
+- [x] **Episode Rewards (REQ-20-09)** - Per-action rewards for RL training and debugging
+
+#### Episode Rewards Implementation (REQ-20-09) ✅
+
+| Component | Status | File(s) | Notes |
+|-----------|--------|---------|-------|
+| EpisodeModel | 🟢 | `persistence/models.py` | id, simulation_id, action_count, turn_count, total_reward, terminated, truncated |
+| Episode repository | 🟢 | `persistence/repository.py` | create_episode, update_episode, get_episodes_for_simulation |
+| Episode tracking in runner | 🟢 | `simulation/runner.py` | _episode_id, _episode_action_count, _episode_turn_count, start_episode(), end_episode() |
+| Per-action rewards | 🟢 | `simulation/runner.py` | _calculate_action_reward() (+0.1/-0.1), _increment_episode_action() |
+| Turn tracking | 🟢 | `simulation/runner.py` | _increment_episode_turn() called after each agent message |
+| Goal completion bonus | 🟢 | `simulation/runner.py` | +1.0 when goal achieved, wired to end_episode(terminated=True) |
+| Episode API endpoints | 🟢 | `api/routes/simulations.py` | /episode/start, /episode/end, /episodes, /episode/current |
+| Episode schemas | 🟢 | `api/schemas/simulations.py` | EpisodeResponse (action_count, turn_count), EpisodeStartResponse, EpisodeEndResponse |
+
+> **Design Decision:** Episode rewards complement (not replace) pass^k evaluation.
+> - Episode rewards: Dense signal for RL training and debugging
+> - Pass^k: Sparse signal for benchmarking and model comparison
+> See ADR-020 "Episode Rewards: Training-Time Scoring" section for full rationale.
 
 ## Not Implemented ❌
 - [ ] Checkpoint support for long-running tasks
@@ -2417,6 +2436,8 @@ if __name__ == "__main__":
 | 2026-01-28 | 10g | **ADR-021 COMPLETE** - Implemented missing components: agent_eval.py (REQ-21-03: EvaluationTask, ActionRecord, ErrorPattern, AgentEvaluation, classify_error, analyze_error_patterns, calculate_efficiency, evaluate_comprehension, PAYMENT_EVALUATION_TASKS), regression.py (REQ-21-05: RegressionReport, OutputDiff, TestDelta, PerformanceDelta, detect_regressions, is_safe_to_deploy, format_regression_report), coverage.py (REQ-21-06: CoverageReport, BranchInfo, ExecutionTrace, ControlFlowGraph, analyze_coverage, build_control_flow_graph), API endpoints (GET /coverage, GET /compare/{version}), updated __init__.py exports. All unit tests pass. Phase 10g now 🟢 | Claude |
 | 2026-01-28 | 10h | **ADR-020.1 Tier 1 Implementation (~40%)** - Implemented core dual-control backend: (1) definition.py: AppAccessType, AppStateType, ToolType, AgentRole enums; AppDefinition extended with access_type, allowed_roles, allowed_role_tags, state_type; ActionDefinition.tool_type; can_agent_access() method; (2) dynamic.py: set_agent_role(), get_agent_role(), can_agent_access(), check_access() methods; access control in _execute_action(); per-agent state handling in _initialize_state(); initialize_with_roles(); (3) dual_control.py: InstructionTemplate, CoordinationHandoff, DualControlTaskDefinition, CoordinationEvent, CoordinationMetrics, SoloDualComparison; common templates (TOGGLE_DATA, CHECK_STATUS, etc.); (4) coordination.py: PendingInstruction, CoordinationTracker, analyze_coordination(); (5) API schemas: dual_control.py with Pydantic models. ADRs updated: ADR-019 (JSON↔Python mapping, access control section), ADR-020 (agent ID immutability constraint). Remaining: DB migration, API endpoints, telecom domain apps, UI components | Claude |
 | 2026-01-29 | - | Auto-tracked: ADR-012 (1 files modified) | Hook |
+| 2026-01-30 | - | Auto-tracked: ADR-012 (1 files modified) | Hook |
+| 2026-01-30 | 10f | **ADR-020 REQ-20-09 Episode Rewards** - Added two-layer scoring system: (1) Episode rewards for RL training (dense per-action signal: +0.1/-0.1, +1.0 goal bonus); (2) Pass^k for benchmarking (sparse end-of-trial signal). Implementation: EpisodeModel (persistence), episode CRUD (repository), episode tracking (runner: start_episode, end_episode, _calculate_action_reward, _increment_episode_step), API endpoints (5: /episode/start, /episode/end, /episodes, /episode/current, /episodes/{id}), Pydantic schemas. ADR-020 updated with "Episode Rewards: Training-Time Scoring" section explaining complementary approaches. Complements τ-bench pass^k without replacing it. | Claude |
 
 ---
 
