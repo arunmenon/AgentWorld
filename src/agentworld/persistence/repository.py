@@ -1,5 +1,6 @@
 """Repository pattern for data access."""
 
+import json
 from datetime import UTC, datetime
 from typing import Any
 
@@ -28,6 +29,7 @@ from agentworld.persistence.models import (
     AppActionLogModel,
     AppDefinitionModel,
     AppDefinitionVersionModel,
+    EpisodeModel,
 )
 
 
@@ -2074,3 +2076,140 @@ class Repository:
         if model is None:
             return None
         return model.to_dict()
+
+    # Episode methods
+
+    def create_episode(self, episode_data: dict[str, Any]) -> str:
+        """Create a new episode.
+
+        Args:
+            episode_data: Episode data dictionary with id, simulation_id, etc.
+
+        Returns:
+            Episode ID
+        """
+        model = EpisodeModel.from_dict(episode_data)
+        self.session.add(model)
+        self.session.commit()
+        return model.id
+
+    def get_episode(self, episode_id: str) -> dict[str, Any] | None:
+        """Get an episode by ID.
+
+        Args:
+            episode_id: Episode ID
+
+        Returns:
+            Episode data or None if not found
+        """
+        model = self.session.query(EpisodeModel).filter_by(id=episode_id).first()
+        if model is None:
+            return None
+        return model.to_dict()
+
+    def update_episode(self, episode_id: str, updates: dict[str, Any]) -> bool:
+        """Update an episode.
+
+        Args:
+            episode_id: Episode ID
+            updates: Dictionary of fields to update
+
+        Returns:
+            True if updated, False if not found
+        """
+        model = self.session.query(EpisodeModel).filter_by(id=episode_id).first()
+        if model is None:
+            return False
+
+        if "ended_at" in updates:
+            value = updates["ended_at"]
+            if isinstance(value, str):
+                value = datetime.fromisoformat(value)
+            model.ended_at = value
+        if "action_count" in updates:
+            model.action_count = updates["action_count"]
+        if "turn_count" in updates:
+            model.turn_count = updates["turn_count"]
+        if "total_reward" in updates:
+            model.total_reward = updates["total_reward"]
+        if "terminated" in updates:
+            model.terminated = int(updates["terminated"])
+        if "truncated" in updates:
+            model.truncated = int(updates["truncated"])
+        if "metadata" in updates:
+            model.metadata_json = json.dumps(updates["metadata"]) if updates["metadata"] else None
+        if "snapshots_json" in updates:
+            model.snapshots_json = updates["snapshots_json"]
+
+        self.session.commit()
+        return True
+
+    def get_episodes_for_simulation(
+        self,
+        simulation_id: str,
+        app_id: str | None = None,
+        limit: int = 100,
+    ) -> list[dict[str, Any]]:
+        """Get all episodes for a simulation, optionally filtered by app.
+
+        Args:
+            simulation_id: Simulation ID
+            app_id: Optional app ID to filter by
+            limit: Maximum number of results
+
+        Returns:
+            List of episode dictionaries, newest first
+        """
+        query = self.session.query(EpisodeModel).filter_by(simulation_id=simulation_id)
+        if app_id is not None:
+            query = query.filter_by(app_id=app_id)
+        models = (
+            query
+            .order_by(EpisodeModel.started_at.desc())
+            .limit(limit)
+            .all()
+        )
+        return [model.to_dict() for model in models]
+
+    def get_active_episode(
+        self,
+        simulation_id: str,
+        app_id: str | None = None,
+    ) -> dict[str, Any] | None:
+        """Get the currently active (not ended) episode for a simulation/app.
+
+        Args:
+            simulation_id: Simulation ID
+            app_id: Optional app ID to filter by
+
+        Returns:
+            Episode data or None if no active episode
+        """
+        query = (
+            self.session.query(EpisodeModel)
+            .filter_by(simulation_id=simulation_id)
+            .filter(EpisodeModel.ended_at.is_(None))
+        )
+        if app_id is not None:
+            query = query.filter_by(app_id=app_id)
+        model = query.order_by(EpisodeModel.started_at.desc()).first()
+        if model is None:
+            return None
+        return model.to_dict()
+
+    def delete_episodes_for_simulation(self, simulation_id: str) -> int:
+        """Delete all episodes for a simulation.
+
+        Args:
+            simulation_id: Simulation ID
+
+        Returns:
+            Number of episodes deleted
+        """
+        count = (
+            self.session.query(EpisodeModel)
+            .filter_by(simulation_id=simulation_id)
+            .delete()
+        )
+        self.session.commit()
+        return count

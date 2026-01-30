@@ -151,11 +151,16 @@ class MessageModel(Base):
 
     id = Column(String(8), primary_key=True)
     simulation_id = Column(String(8), ForeignKey("simulations.id"), nullable=False)
-    sender_id = Column(String(8), ForeignKey("agents.id"), nullable=False)
+    # sender_id is nullable for episode events (message_type != "message")
+    sender_id = Column(String(8), ForeignKey("agents.id"), nullable=True)
     receiver_id = Column(String(8), ForeignKey("agents.id"), nullable=True)
     content = Column(Text, nullable=False)
     step = Column(Integer, default=0)
     timestamp = Column(DateTime, default=_utc_now)
+    # Message type: "message", "episode_reset", "episode_step", "episode_close"
+    message_type = Column(String(20), default="message")
+    # JSON metadata for episode events (app_id, episode_id, action, reward, etc.)
+    metadata_json = Column(Text, nullable=True)
 
     # Relationships
     simulation = relationship("SimulationModel", back_populates="messages")
@@ -164,6 +169,13 @@ class MessageModel(Base):
 
     def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary."""
+        metadata = None
+        if self.metadata_json:
+            try:
+                metadata = json.loads(self.metadata_json)
+            except (json.JSONDecodeError, TypeError):
+                metadata = None
+
         return {
             "id": self.id,
             "simulation_id": self.simulation_id,
@@ -172,6 +184,8 @@ class MessageModel(Base):
             "content": self.content,
             "step": self.step,
             "timestamp": self.timestamp.isoformat() if self.timestamp else None,
+            "message_type": self.message_type or "message",
+            "metadata": metadata,
         }
 
     @classmethod
@@ -181,6 +195,11 @@ class MessageModel(Base):
         if isinstance(timestamp, str):
             timestamp = datetime.fromisoformat(timestamp)
 
+        metadata = data.get("metadata")
+        metadata_json = None
+        if metadata:
+            metadata_json = json.dumps(metadata)
+
         return cls(
             id=data["id"],
             simulation_id=data["simulation_id"],
@@ -189,6 +208,8 @@ class MessageModel(Base):
             content=data["content"],
             step=data.get("step", 0),
             timestamp=timestamp,
+            message_type=data.get("message_type", "message"),
+            metadata_json=metadata_json,
         )
 
 
@@ -1872,6 +1893,76 @@ class CoordinationEventModel(Base):
             match_confidence=data.get("match_confidence", 0.0),
             handoff_successful=int(data.get("handoff_successful", False)),
             latency_turns=data.get("latency_turns", 0),
+        )
+
+
+class EpisodeModel(Base):
+    """Database model for episodes within simulations.
+
+    Tracks episode lifecycle for environment-style interactions.
+    Episodes can be started/ended within a simulation to track
+    distinct interaction periods with rewards and termination status.
+    """
+
+    __tablename__ = "episodes"
+
+    id = Column(String(36), primary_key=True)
+    simulation_id = Column(String(8), ForeignKey("simulations.id"), nullable=False, index=True)
+    app_id = Column(String(64), nullable=True, index=True)  # App this episode belongs to (nullable for simulation-level episodes)
+    started_at = Column(DateTime, default=_utc_now)
+    ended_at = Column(DateTime, nullable=True)
+    action_count = Column(Integer, default=0)  # App actions only
+    turn_count = Column(Integer, default=0)    # All agent messages
+    total_reward = Column(Float, default=0.0)
+    terminated = Column(Integer, default=0)  # Boolean as int - goal achieved
+    truncated = Column(Integer, default=0)   # Boolean as int - max steps reached
+    metadata_json = Column(Text, nullable=True)
+    snapshots_json = Column(Text, nullable=True)  # State snapshots for replay (JSON array)
+
+    # Relationships
+    simulation = relationship("SimulationModel")
+
+    def to_dict(self) -> dict[str, Any]:
+        """Convert to dictionary."""
+        return {
+            "id": self.id,
+            "simulation_id": self.simulation_id,
+            "app_id": self.app_id,
+            "started_at": self.started_at.isoformat() if self.started_at else None,
+            "ended_at": self.ended_at.isoformat() if self.ended_at else None,
+            "action_count": self.action_count,
+            "turn_count": self.turn_count,
+            "total_reward": self.total_reward,
+            "terminated": bool(self.terminated),
+            "truncated": bool(self.truncated),
+            "metadata": json.loads(self.metadata_json) if self.metadata_json else None,
+            "snapshots": json.loads(self.snapshots_json) if self.snapshots_json else [],
+        }
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> "EpisodeModel":
+        """Create from dictionary."""
+        started_at = data.get("started_at")
+        if isinstance(started_at, str):
+            started_at = datetime.fromisoformat(started_at)
+
+        ended_at = data.get("ended_at")
+        if isinstance(ended_at, str):
+            ended_at = datetime.fromisoformat(ended_at)
+
+        return cls(
+            id=data["id"],
+            simulation_id=data["simulation_id"],
+            app_id=data.get("app_id"),
+            started_at=started_at,
+            ended_at=ended_at,
+            action_count=data.get("action_count", 0),
+            turn_count=data.get("turn_count", 0),
+            total_reward=data.get("total_reward", 0.0),
+            terminated=int(data.get("terminated", False)),
+            truncated=int(data.get("truncated", False)),
+            metadata_json=json.dumps(data.get("metadata")) if data.get("metadata") else None,
+            snapshots_json=data.get("snapshots_json"),
         )
 
 
